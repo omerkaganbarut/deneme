@@ -1,0 +1,46 @@
+#include <Arduino.h>
+#include "PulseAt.h"
+#include "Config.h"
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("=== PULSEAT FREKANS TESTI ===");
+  Serial.println("Pin 5 (Z motor) test ediliyor...\n");
+  
+  pinMode(STEP1_PIN, OUTPUT);
+  pinMode(DIR1_PIN, OUTPUT);
+  pinMode(ENA1_PIN, OUTPUT);
+  
+  digitalWrite(DIR1_PIN, LOW);
+  digitalWrite(ENA1_PIN, LOW);
+  
+  Serial.println("Test basladi: 1000 pulse @ 1000Hz");
+  Serial.println("Logic Analyzer CH0 -> Pin 5 baglayin!");
+  Serial.println("Bekleniyor: 1 saniye boyunca 1kHz sinyali");
+  Serial.println();
+  
+  delay(2000);  // Hazırlık
+  
+  // Z motorunu seç
+  useMotor(MOTOR_Z);
+  
+  // 1000 pulse, 1000Hz (1 saniye sürmeli)
+  pulseAt(1000, 0, 1000);
+}
+
+void loop() {
+  // PulseAt arka plan çalışması
+  useMotor(MOTOR_Z);
+  pulseAt(0, 0, 0);
+  
+  // Bittiğinde dur
+  if (pulseAtBittiMi(MOTOR_Z)) {
+    Serial.println("TEST TAMAMLANDI!");
+    Serial.println("Logic Analyzer'da sonucu kontrol edin:");
+    Serial.println("  - Frekans: 1000 Hz olmali");
+    Serial.println("  - Pulse sayisi: 1000 olmali");
+    Serial.println("  - Sure: ~1 saniye olmali");
+    
+    while(1);  // Dur
+  }
+}

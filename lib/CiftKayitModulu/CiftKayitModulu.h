@@ -1,90 +1,87 @@
-// CiftKayitModulu.h - İKİ FARKLI X POZİSYONUNDA KAYIT ALMA
+// CiftKayitModulu.h - v8.0 AYRILMIŞ META DATA
 #ifndef CIFTKAYITMODULU_H
 #define CIFTKAYITMODULU_H
 
 #include <Arduino.h>
 #include "stepmotorenkoderiokuma.h"
+#include "Config.h"
 
 // ═══════════════════════════════════════════════════════════════
-// KAYIT VERİ YAPISI
+// KAYIT META VERİLERİ
 // ═══════════════════════════════════════════════════════════════
-struct CK_Sample {
-  long enc;      // BIG encoder pozisyonu
-  uint16_t a0;   // A0 sensör değeri
+struct CK_MetaData {
+  long x1Pos;           // Kayıt1 X pozisyonu
+  long x2Pos;           // Kayıt2 X pozisyonu
+  long zRefPos;         // Z referans pozisyonu
+  uint16_t globalA0Min; // İki kayıttan da en küçük A0
+  uint16_t globalA0Max; // İki kayıttan da en büyük A0
+  bool valid;           // Veri geçerli mi?
 };
 
 // ═══════════════════════════════════════════════════════════════
-// FONKSİYON TANIMLARI
+// EXTERN KAYIT ARRAYLERI VE META VERİLER
+// ═══════════════════════════════════════════════════════════════
+extern Sample kayit1[KAYIT_ORNEK_SAYISI];
+extern Sample kayit2[KAYIT_ORNEK_SAYISI];
+extern CK_MetaData ckMeta;
+
+// ═══════════════════════════════════════════════════════════════
+// TEMEL FONKSİYONLAR
+// ═══════════════════════════════════════════════════════════════
+void ckEncoderSetup(StepMotorEncoder* bigEncoder, StepMotorEncoder* xEncoder);
+void ckBaslat(long x1Enc, long x2Enc, int kayit1Yon, int kayit2Yon);
+void ckRun();
+bool ckAktifMi();
+bool ckTamamlandiMi();
+void ckDurdur();
+
+// ═══════════════════════════════════════════════════════════════
+// DATA EXCHANGE FONKSİYONLARI
+// ═══════════════════════════════════════════════════════════════
+void ckExport1();  // W1 formatında Kayıt1'i export et
+void ckExport2();  // W2 formatında Kayıt2'yi export et
+void ckExport3();  // W3 formatında Meta data'yı export et
+
+bool ckImport1(String veriStr);  // W1 formatında Kayıt1'i import et
+bool ckImport2(String veriStr);  // W2 formatında Kayıt2'yi import et
+bool ckImport3(String veriStr);  // W3 formatında Meta data'yı import et
+
+void ckTemizle1();
+void ckTemizle2();
+void ckHepsiniTemizle();
+// CiftKayitModulu.h - STREAM FONKSİYONLARI EKLENDI
+// ... mevcut kodlar aynı kalacak ...
+
+// ═══════════════════════════════════════════════════════════════
+// STREAM IMPORT/EXPORT FONKSİYONLARI
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * @brief Encoder'ları ayarla (setup'ta bir kez çağır)
+ * @brief Kayıt1'i stream modunda import et
+ * Format: WS1 → sonra veri akışı başlar
+ * Örnek: 0,512 100,523 200,534 ... END
  */
-void ckEncoderSetup(StepMotorEncoder* bigEncoder, StepMotorEncoder* xEncoder);
+bool ckImportStream1();
 
 /**
- * @brief Çift kayıt işlemini başlat
- * 
- * @param x1Enc X1 pozisyonu (encoder değeri)
- * @param x2Enc X2 pozisyonu (encoder değeri)
- * @param kayit1Yon Kayıt1 yönü (0=ileri 0→16000, 1=geri 16000→0)
- * @param kayit2Yon Kayıt2 yönü
- * 
- * İŞLEYİŞ:
- *   1. X1'e git → Y/N → Kayıt1 al
- *   2. X2'ye git → Y/N → Kayıt2 al
- *   3. Global A0_min/max hesapla
+ * @brief Kayıt2'yi stream modunda import et
+ * Format: WS2 → sonra veri akışı başlar
  */
-void ckBaslat(long x1Enc, long x2Enc, int kayit1Yon, int kayit2Yon);
+bool ckImportStream2();
 
 /**
- * @brief Çift kayıt arka plan döngüsü (her loop'ta çağır!)
+ * @brief Kayıt1'i stream modunda export et
+ * 10 örnek sonra nokta koyar, devam eder
  */
-void ckRun();
+void ckExportStream1();
 
 /**
- * @brief Çift kayıt aktif mi?
+ * @brief Kayıt2'yi stream modunda export et
  */
-bool ckAktifMi();
+void ckExportStream2();
 
-/**
- * @brief Çift kayıt tamamlandı mı?
- */
-bool ckTamamlandiMi();
-
-/**
- * @brief Global A0 minimum değerini al
- */
-uint16_t ckGlobalA0Min();
-
-/**
- * @brief Global A0 maximum değerini al
- */
-uint16_t ckGlobalA0Max();
-
-/**
- * @brief Kayıt1 verilerine eriş (read-only)
- */
-const CK_Sample* ckKayit1Verileri();
-
-/**
- * @brief Kayıt2 verilerine eriş (read-only)
- */
-const CK_Sample* ckKayit2Verileri();
-
-/**
- * @brief Kayıt1 verilerini listele (Serial'e yazdır)
- */
-void ckKayit1Listele();
-
-/**
- * @brief Kayıt2 verilerini listele (Serial'e yazdır)
- */
-void ckKayit2Listele();
-
-/**
- * @brief Çift kayıt işlemini durdur (acil durdurma)
- */
-void ckDurdur();
+// Global A0 aralığı (backward compatibility için)
+extern uint16_t globalA0Min;
+extern uint16_t globalA0Max;
 
 #endif // CIFTKAYITMODULU_H

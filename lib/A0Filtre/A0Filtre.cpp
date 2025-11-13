@@ -1,12 +1,12 @@
+// A0Filtre.cpp
 #include "A0Filtre.h"
 #include "Config.h"
 
 uint16_t a0FiltreliOku() {
   const uint8_t N = A0_FILTER_SAMPLES;
-  static uint16_t buf[A0_FILTER_SAMPLES]; // sabit boyutlu; 50 default
+  static uint16_t buf[A0_FILTER_SAMPLES];
 
-  pinMode(OPKON_PIN, INPUT);
-
+  // Örnekleri topla
   for (uint8_t i = 0; i < N; i++) {
     buf[i] = analogRead(OPKON_PIN);
     if (A0_FILTER_SPACING_US > 0) {
@@ -14,7 +14,7 @@ uint16_t a0FiltreliOku() {
     }
   }
 
-  // Basit mod hesaplama (N küçükken yeterli)
+  // Mod hesaplama (en çok tekrar eden değer)
   uint16_t modVal = buf[0];
   uint8_t  modCnt = 1;
 
@@ -28,5 +28,6 @@ uint16_t a0FiltreliOku() {
       modVal = buf[i];
     }
   }
+  
   return modVal;
 }

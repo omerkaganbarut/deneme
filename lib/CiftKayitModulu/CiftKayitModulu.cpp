@@ -1,64 +1,46 @@
-// CiftKayitModulu.cpp - İKİ FARKLI X POZİSYONUNDA KAYIT ALMA
-// ═══════════════════════════════════════════════════════════════
-// AMAÇ: X1 ve X2 noktalarında kayıt alıp Global A0_min/max hesapla
-// ═══════════════════════════════════════════════════════════════
-
+// CiftKayitModulu.cpp - v8.1 DÜZELTİLMİŞ IMPORT FONKSİYONLARI
 #include "CiftKayitModulu.h"
 #include "Config.h"
 #include "KayitModulu.h"
 #include "MoveTo.h"
-#include "CiftOynatmaModulu.h"  // ✅ coZSifirlamaReset() için
+#include "CiftOynatmaModulu.h"
 
 // ═══════════════════════════════════════════════════════════════
 // DURUM MAKİNESİ
 // ═══════════════════════════════════════════════════════════════
-// AÇIKLAMA: Her durum bir adımı temsil eder. Non-blocking yapı.
 enum CKDurum {
-  CK_KAPALI = 0,              // İşlem başlatılmamış
-  
-  // ─────────────────────────────────────────────────────────────
-  // KAYIT1 AŞAMASI (X1 noktası)
-  // ─────────────────────────────────────────────────────────────
-  CK_X1_GIDIYOR,              // MoveTo ile X1'e gidiyor
-  CK_X1_ONAY_BEKLE,           // "Kayıt1 başlasın mı?" (Y/N)
-  CK_KAYIT1_CALISIYOR,        // kayitBaslat() çağrıldı, kayitRun() aktif
-  CK_X2_ONAY_BEKLE,           // "X2'ye git?" (Y/N)
-  
-  // ─────────────────────────────────────────────────────────────
-  // KAYIT2 AŞAMASI (X2 noktası)
-  // ─────────────────────────────────────────────────────────────
-  CK_X2_GIDIYOR,              // MoveTo ile X2'ye gidiyor
-  CK_X2_ONAY2_BEKLE,          // "Kayıt2 başlasın mı?" (Y/N)
-  CK_KAYIT2_CALISIYOR,        // kayitBaslat() çağrıldı, kayitRun() aktif
-  
-  CK_TAMAMLANDI               // Her iki kayıt da alındı
+  CK_KAPALI = 0,
+  CK_X1_GIDIYOR,
+  CK_X1_ONAY_BEKLE,
+  CK_KAYIT1_CALISIYOR,
+  CK_X2_GIDIYOR,
+  CK_X2_ONAY_BEKLE,
+  CK_KAYIT2_CALISIYOR,
+  CK_TAMAMLANDI
 };
 
 // ═══════════════════════════════════════════════════════════════
 // STATİK DEĞİŞKENLER
 // ═══════════════════════════════════════════════════════════════
 static CKDurum durum = CK_KAPALI;
-
-// Encoder pointer'ları
 static StepMotorEncoder* bigEnc = nullptr;
 static StepMotorEncoder* xEnc = nullptr;
-
-// Kullanıcı parametreleri
-static long x1Hedef = 0;          // X1 pozisyonu
-static long x2Hedef = 0;          // X2 pozisyonu
-static int yon1 = 0;              // Kayıt1 yönü (0=ileri)
-static int yon2 = 0;              // Kayıt2 yönü (1=geri)
-
-// Kayıt verileri (2 ayrı dizi - 101 örnek)
-static CK_Sample kayit1[KAYIT_ORNEK_SAYISI];
-static CK_Sample kayit2[KAYIT_ORNEK_SAYISI];
-
-// Global A0 aralığı (2 kayıttan hesaplanır)
-static uint16_t globalA0Min = 1023;
-static uint16_t globalA0Max = 0;
+static long x1Hedef = 0;
+static long x2Hedef = 0;
+static int yon1 = 0;
+static int yon2 = 1;
 
 // ═══════════════════════════════════════════════════════════════
-// ENCODER SETUP (setup() içinde bir kez çağrılır)
+// GLOBAL TANIMLAR
+// ═══════════════════════════════════════════════════════════════
+Sample kayit1[KAYIT_ORNEK_SAYISI];
+Sample kayit2[KAYIT_ORNEK_SAYISI];
+CK_MetaData ckMeta = {0, 0, 0, 1023, 0, false};
+uint16_t globalA0Min = 1023;
+uint16_t globalA0Max = 0;
+
+// ═══════════════════════════════════════════════════════════════
+// ENCODER SETUP
 // ═══════════════════════════════════════════════════════════════
 void ckEncoderSetup(StepMotorEncoder* bigEncoder, StepMotorEncoder* xEncoder) {
   bigEnc = bigEncoder;
@@ -68,96 +50,64 @@ void ckEncoderSetup(StepMotorEncoder* bigEncoder, StepMotorEncoder* xEncoder) {
 // ═══════════════════════════════════════════════════════════════
 // ÇİFT KAYIT BAŞLATMA
 // ═══════════════════════════════════════════════════════════════
-// PARAMETRELER:
-//   x1Enc      : X1 pozisyonu (encoder değeri)
-//   x2Enc      : X2 pozisyonu (encoder değeri)
-//   kayit1Yon  : Kayıt1 yönü (0=ileri 0→16000, 1=geri 16000→0)
-//   kayit2Yon  : Kayıt2 yönü
-// ═══════════════════════════════════════════════════════════════
 void ckBaslat(long x1Enc, long x2Enc, int kayit1Yon, int kayit2Yon) {
   Serial.println(F("\n╔════════════════════════════════════════════════╗"));
   Serial.println(F("║           ÇİFT KAYIT BAŞLATILIYOR              ║"));
   Serial.println(F("╚════════════════════════════════════════════════╝\n"));
   
-  // ─────────────────────────────────────────────────────────────
-  // Z SIFIRLAMA BAYRAĞINI SIFIRLA
-  // ─────────────────────────────────────────────────────────────
-  // AÇIKLAMA: Yeni kayıt alındığında bir sonraki CO komutunda
-  //           Z sıfırlama aşaması tekrar çalışmalı.
   coZSifirlamaReset();
   
-  // ─────────────────────────────────────────────────────────────
-  // PARAMETRELERE KAYDET
-  // ─────────────────────────────────────────────────────────────
+  // Meta verileri hazırla
+  ckMeta.x1Pos = x1Enc;
+  ckMeta.x2Pos = x2Enc;
+  ckMeta.zRefPos = 0;
+  ckMeta.globalA0Min = 1023;
+  ckMeta.globalA0Max = 0;
+  ckMeta.valid = false;
+  
   x1Hedef = x1Enc;
   x2Hedef = x2Enc;
   yon1 = kayit1Yon;
   yon2 = kayit2Yon;
   
-  // ─────────────────────────────────────────────────────────────
-  // RAPOR
-  // ─────────────────────────────────────────────────────────────
-  Serial.print(F("  X1 Pozisyonu : "));
+  Serial.print(F("  X1 Pozisyonu: "));
   Serial.print(x1Hedef);
   Serial.print(F(" (Yön: "));
   Serial.print(yon1 ? F("Geri") : F("İleri"));
   Serial.println(F(")"));
   
-  Serial.print(F("  X2 Pozisyonu : "));
+  Serial.print(F("  X2 Pozisyonu: "));
   Serial.print(x2Hedef);
   Serial.print(F(" (Yön: "));
   Serial.print(yon2 ? F("Geri") : F("İleri"));
   Serial.println(F(")"));
   
-  // ─────────────────────────────────────────────────────────────
-  // ENCODER KONTROL
-  // ─────────────────────────────────────────────────────────────
   if (bigEnc == nullptr || xEnc == nullptr) {
     Serial.println(F("\n✗ Hata: Encoder'lar ayarlanmamış!"));
-    Serial.println(F("  setup() içinde ckEncoderSetup() çağırın.\n"));
     return;
   }
   
-  // ─────────────────────────────────────────────────────────────
-  // [ADIM 1/7] X1'E GİT
-  // ─────────────────────────────────────────────────────────────
-  Serial.println(F("\n[ADIM 1/7] X1 pozisyonuna gidiliyor..."));
-  if (!moveTo(MOTOR_X, x1Hedef, 5000)) {
-    Serial.println(F("✗ X motor hareket başlatılamadı!"));
-    return;
-  }
-  
+  Serial.println(F("\n[ADIM 1/6] X1 pozisyonuna gidiliyor..."));
+  moveTo(MOTOR_X, x1Hedef, 10000, false);
   durum = CK_X1_GIDIYOR;
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ÇİFT KAYIT ARKA PLAN (Her loop'ta çağrılır)
-// ═══════════════════════════════════════════════════════════════
-// AÇIKLAMA: Durum makinesini çalıştırır. MoveTo ve KayitModulu'nun
-//           arka planlarını çağırır. Y/N onaylarını bekler.
+// ÇİFT KAYIT ARKA PLAN
 // ═══════════════════════════════════════════════════════════════
 void ckRun() {
   switch (durum) {
     
-    // ───────────────────────────────────────────────────────────
     case CK_KAPALI:
-    // ───────────────────────────────────────────────────────────
-      // Hiçbir şey yapma (bekleme modunda)
       return;
     
-    // ───────────────────────────────────────────────────────────
     case CK_X1_GIDIYOR:
-    // ───────────────────────────────────────────────────────────
-      // AÇIKLAMA: MoveTo arka planı main loop'ta çağrılıyor (moveToRun).
-      //           Burada sadece "bitti mi?" kontrolü yapıyoruz.
-      
-      if (moveToBittiMi(MOTOR_X)) {
+      if (!moveToAktifMi(MOTOR_X)) {
         Serial.println(F("✓ X1 pozisyonuna ulaşıldı!\n"));
-        
         Serial.print(F("  Mevcut X: "));
         Serial.println(xEnc->getPosition());
         
-        Serial.println(F("\n[ADIM 2/7] Kayıt1 hazır."));
+        Serial.println(F("\n[ADIM 2/6] Kayıt1 başlatmaya hazır."));
         Serial.println(F("───────────────────────────────────────────────"));
         Serial.println(F("  Kayıt1'i başlatmak için 'Y' tuşuna basın."));
         Serial.println(F("  İptal için 'N' tuşuna basın."));
@@ -167,53 +117,60 @@ void ckRun() {
       }
       break;
     
-    // ───────────────────────────────────────────────────────────
     case CK_X1_ONAY_BEKLE:
-    // ───────────────────────────────────────────────────────────
-      // AÇIKLAMA: Kullanıcıdan Y/N girişi bekliyoruz.
-      //           Y = Kayıt1 başlat, N = İptal et
-      
-      if (Serial.available()) {
-        char c = Serial.read();
+      if (Serial.available() > 0) {
+        char c = Serial.peek();
         
         if (c == 'Y' || c == 'y') {
+          Serial.read();
           Serial.println(F("Y\n"));
           
-          // [ADIM 3/7] KAYIT1 BAŞLAT
-          Serial.println(F("[ADIM 3/7] Kayıt1 başlatılıyor...\n"));
+          Serial.println(F("[ADIM 3/6] Kayıt1 başlatılıyor...\n"));
           kayitBaslat(yon1);
           
           durum = CK_KAYIT1_CALISIYOR;
         }
         else if (c == 'N' || c == 'n') {
+          Serial.read();
           Serial.println(F("N\n"));
-          Serial.println(F("✗ Çift kayıt iptal edildi!\n"));
+          Serial.println(F("✗ Çift kayıt iptal edildi!"));
+          
           durum = CK_KAPALI;
         }
       }
       break;
     
-    // ───────────────────────────────────────────────────────────
     case CK_KAYIT1_CALISIYOR:
-    // ───────────────────────────────────────────────────────────
-      // AÇIKLAMA: KayitModulu arka planı main loop'ta çağrılıyor (kayitRun).
-      //           Burada sadece "tamamlandı mı?" kontrolü yapıyoruz.
-      
       if (kayitTamamlandiMi()) {
         Serial.println(F("\n✓ Kayıt1 tamamlandı!\n"));
         
-        // ═════════════════════════════════════════════════════════
-        // KAYIT1'İ KOPYALA (KayitModulu'nden bu modülün dizisine)
-        // ═════════════════════════════════════════════════════════
-        const KM_Sample* src = kayitVerileri();
+        // KAYIT1'İ KOPYALA
+        const Sample* src = kayitVerileri();
         for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
           kayit1[i].enc = src[i].enc;
           kayit1[i].a0 = src[i].a0;
         }
         
-        Serial.println(F("[ADIM 4/7] X2'ye geçiş hazır."));
+        Serial.println(F("→ Kayıt1 kaydedildi."));
+        Serial.print(F("  Örnek sayısı: "));
+        Serial.println(kayitOrnekSayisi());
+        
+        Serial.println(F("\n[ADIM 4/6] X2 pozisyonuna gidiliyor..."));
+        
+        moveTo(MOTOR_X, x2Hedef, 10000, false);
+        durum = CK_X2_GIDIYOR;
+      }
+      break;
+    
+    case CK_X2_GIDIYOR:
+      if (!moveToAktifMi(MOTOR_X)) {
+        Serial.println(F("✓ X2 pozisyonuna ulaşıldı!\n"));
+        Serial.print(F("  Mevcut X: "));
+        Serial.println(xEnc->getPosition());
+        
+        Serial.println(F("\n[ADIM 5/6] Kayıt2 başlatmaya hazır."));
         Serial.println(F("───────────────────────────────────────────────"));
-        Serial.println(F("  X2 pozisyonuna gitmek için 'Y' tuşuna basın."));
+        Serial.println(F("  Kayıt2'yi başlatmak için 'Y' tuşuna basın."));
         Serial.println(F("  İptal için 'N' tuşuna basın."));
         Serial.print(F("  > "));
         
@@ -221,125 +178,59 @@ void ckRun() {
       }
       break;
     
-    // ───────────────────────────────────────────────────────────
     case CK_X2_ONAY_BEKLE:
-    // ───────────────────────────────────────────────────────────
-      // AÇIKLAMA: Kullanıcıdan Y/N girişi bekliyoruz.
-      //           Y = X2'ye git, N = İptal et
-      
-      if (Serial.available()) {
-        char c = Serial.read();
+      if (Serial.available() > 0) {
+        char c = Serial.peek();
         
         if (c == 'Y' || c == 'y') {
+          Serial.read();
           Serial.println(F("Y\n"));
           
-          // [ADIM 5/7] X2'YE GİT
-          Serial.println(F("[ADIM 5/7] X2 pozisyonuna gidiliyor..."));
-          if (!moveTo(MOTOR_X, x2Hedef, 5000)) {
-            Serial.println(F("✗ X motor hareket başlatılamadı!"));
-            durum = CK_KAPALI;
-            return;
-          }
-          
-          durum = CK_X2_GIDIYOR;
-        }
-        else if (c == 'N' || c == 'n') {
-          Serial.println(F("N\n"));
-          Serial.println(F("✗ Çift kayıt iptal edildi!\n"));
-          durum = CK_KAPALI;
-        }
-      }
-      break;
-    
-    // ───────────────────────────────────────────────────────────
-    case CK_X2_GIDIYOR:
-    // ───────────────────────────────────────────────────────────
-      // AÇIKLAMA: MoveTo arka planı çalışıyor (moveToRun).
-      
-      if (moveToBittiMi(MOTOR_X)) {
-        Serial.println(F("✓ X2 pozisyonuna ulaşıldı!\n"));
-        
-        Serial.print(F("  Mevcut X: "));
-        Serial.println(xEnc->getPosition());
-        
-        Serial.println(F("\n[ADIM 6/7] Kayıt2 hazır."));
-        Serial.println(F("───────────────────────────────────────────────"));
-        Serial.println(F("  Kayıt2'yi başlatmak için 'Y' tuşuna basın."));
-        Serial.println(F("  İptal için 'N' tuşuna basın."));
-        Serial.print(F("  > "));
-        
-        durum = CK_X2_ONAY2_BEKLE;
-      }
-      break;
-    
-    // ───────────────────────────────────────────────────────────
-    case CK_X2_ONAY2_BEKLE:
-    // ───────────────────────────────────────────────────────────
-      // AÇIKLAMA: Kullanıcıdan Y/N girişi bekliyoruz.
-      //           Y = Kayıt2 başlat, N = İptal et
-      
-      if (Serial.available()) {
-        char c = Serial.read();
-        
-        if (c == 'Y' || c == 'y') {
-          Serial.println(F("Y\n"));
-          
-          // [ADIM 7/7] KAYIT2 BAŞLAT
-          Serial.println(F("[ADIM 7/7] Kayıt2 başlatılıyor...\n"));
+          Serial.println(F("[ADIM 6/6] Kayıt2 başlatılıyor...\n"));
           kayitBaslat(yon2);
           
           durum = CK_KAYIT2_CALISIYOR;
         }
         else if (c == 'N' || c == 'n') {
+          Serial.read();
           Serial.println(F("N\n"));
-          Serial.println(F("✗ Çift kayıt iptal edildi!\n"));
+          Serial.println(F("✗ Kayıt2 iptal edildi!"));
+          
           durum = CK_KAPALI;
         }
       }
       break;
     
-    // ───────────────────────────────────────────────────────────
     case CK_KAYIT2_CALISIYOR:
-    // ───────────────────────────────────────────────────────────
-      // AÇIKLAMA: KayitModulu arka planı çalışıyor (kayitRun).
-      
       if (kayitTamamlandiMi()) {
         Serial.println(F("\n✓ Kayıt2 tamamlandı!\n"));
         
-        // ═════════════════════════════════════════════════════════
         // KAYIT2'Yİ KOPYALA
-        // ═════════════════════════════════════════════════════════
-        const KM_Sample* src = kayitVerileri();
+        const Sample* src = kayitVerileri();
         for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
           kayit2[i].enc = src[i].enc;
           kayit2[i].a0 = src[i].a0;
         }
         
-        // ═════════════════════════════════════════════════════════
-        // GLOBAL A0 MIN/MAX HESAPLA
-        // ═════════════════════════════════════════════════════════
-        // AÇIKLAMA: İki kayıttan EN KÜÇÜK ve EN BÜYÜK A0 değerlerini bul.
-        //           Bu değerler Çift Oynatma'da Z encoder'ı ölçeklendirmek
-        //           için kullanılır.
-        
+        // GLOBAL A0 MIN/MAX HESAPLA (İKİSİNDEN DE EN KÜÇÜK VE EN BÜYÜK)
         globalA0Min = 1023;
         globalA0Max = 0;
         
-        // Kayıt1'den min/max
         for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
           if (kayit1[i].a0 < globalA0Min) globalA0Min = kayit1[i].a0;
           if (kayit1[i].a0 > globalA0Max) globalA0Max = kayit1[i].a0;
         }
         
-        // Kayıt2'den min/max
         for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
           if (kayit2[i].a0 < globalA0Min) globalA0Min = kayit2[i].a0;
           if (kayit2[i].a0 > globalA0Max) globalA0Max = kayit2[i].a0;
         }
         
-        // ═════════════════════════════════════════════════════════
-        // TAMAMLANDI RAPORU
-        // ═════════════════════════════════════════════════════════
+        // Meta verilere kaydet
+        ckMeta.globalA0Min = globalA0Min;
+        ckMeta.globalA0Max = globalA0Max;
+        ckMeta.valid = true;
+        
         Serial.println(F("\n╔════════════════════════════════════════════════╗"));
         Serial.println(F("║          ÇİFT KAYIT TAMAMLANDI! ✓              ║"));
         Serial.println(F("╚════════════════════════════════════════════════╝\n"));
@@ -361,15 +252,10 @@ void ckRun() {
       }
       break;
     
-    // ───────────────────────────────────────────────────────────
     case CK_TAMAMLANDI:
-    // ───────────────────────────────────────────────────────────
-      // Hiçbir şey yapma (bitti)
       return;
     
-    // ───────────────────────────────────────────────────────────
     default:
-    // ───────────────────────────────────────────────────────────
       Serial.println(F("✗ Bilinmeyen durum!"));
       durum = CK_KAPALI;
       break;
@@ -388,95 +274,507 @@ bool ckTamamlandiMi() {
   return (durum == CK_TAMAMLANDI);
 }
 
-uint16_t ckGlobalA0Min() {
-  return globalA0Min;
-}
-
-uint16_t ckGlobalA0Max() {
-  return globalA0Max;
-}
-
-const CK_Sample* ckKayit1Verileri() {
-  return kayit1;
-}
-
-const CK_Sample* ckKayit2Verileri() {
-  return kayit2;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// LİSTELEME FONKSİYONLARI
-// ═══════════════════════════════════════════════════════════════
-
-void ckKayit1Listele() {
-  if (durum != CK_TAMAMLANDI) {
-    Serial.println(F("✗ Kayıt1 henüz tamamlanmadı!"));
-    return;
-  }
-  
-  Serial.println(F("\n╔════════════════════════════════════════════════╗"));
-  Serial.println(F("║                  KAYIT 1                       ║"));
-  Serial.println(F("╚════════════════════════════════════════════════╝\n"));
-  
-  Serial.println(F(" IDX |  ENCODER  |   A0  |  ENC FARK"));
-  Serial.println(F("─────┼───────────┼───────┼──────────"));
-  
-  for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
-    long encFark = 0;
-    if (i > 0) {
-      encFark = kayit1[i].enc - kayit1[i-1].enc;
-    }
-    
-    char buf[48];
-    sprintf(buf, " %3d | %9ld | %5d | %+9ld", 
-            i, kayit1[i].enc, kayit1[i].a0, encFark);
-    Serial.println(buf);
-  }
-  Serial.println();
-}
-
-void ckKayit2Listele() {
-  if (durum != CK_TAMAMLANDI) {
-    Serial.println(F("✗ Kayıt2 henüz tamamlanmadı!"));
-    return;
-  }
-  
-  Serial.println(F("\n╔════════════════════════════════════════════════╗"));
-  Serial.println(F("║                  KAYIT 2                       ║"));
-  Serial.println(F("╚════════════════════════════════════════════════╝\n"));
-  
-  Serial.println(F(" IDX |  ENCODER  |   A0  |  ENC FARK"));
-  Serial.println(F("─────┼───────────┼───────┼──────────"));
-  
-  for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
-    long encFark = 0;
-    if (i > 0) {
-      encFark = kayit2[i].enc - kayit2[i-1].enc;
-    }
-    
-    char buf[48];
-    sprintf(buf, " %3d | %9ld | %5d | %+9ld", 
-            i, kayit2[i].enc, kayit2[i].a0, encFark);
-    Serial.println(buf);
-  }
-  Serial.println();
-}
-
-// ═══════════════════════════════════════════════════════════════
-// DURDURMA
-// ═══════════════════════════════════════════════════════════════
 void ckDurdur() {
-  Serial.println(F("\n[ÇİFT KAYIT] Acil durduruldu!"));
+  Serial.println(F("\n✗ Çift kayıt durduruldu!"));
   
-  // Motorları durdur
-  moveToDurdur(MOTOR_X);
-  moveToDurdur(MOTOR_B);
-  
-  // Kayıt modülünü durdur
   kayitDurdur();
+  moveToDurdur(MOTOR_X);
   
-  // Durumu sıfırla
   durum = CK_KAPALI;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EXPORT FONKSİYONLARI
+// ═══════════════════════════════════════════════════════════════
+
+void ckExport1() {
+  Serial.print(F("W1"));
+  
+  for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
+    Serial.print(F(" "));
+    Serial.print(kayit1[i].enc);
+    Serial.print(F(" "));
+    Serial.print(kayit1[i].a0);
+  }
   
   Serial.println();
+  
+  Serial.println(F("\n✅ Kayit1 export edildi!"));
+  Serial.println(F("   Yukarıdaki 'W1 ...' satırını kopyalayabilirsin."));
+}
+
+void ckExport2() {
+  Serial.print(F("W2"));
+  
+  for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
+    Serial.print(F(" "));
+    Serial.print(kayit2[i].enc);
+    Serial.print(F(" "));
+    Serial.print(kayit2[i].a0);
+  }
+  
+  Serial.println();
+  
+  Serial.println(F("\n✅ Kayit2 export edildi!"));
+  Serial.println(F("   Yukarıdaki 'W2 ...' satırını kopyalayabilirsin."));
+}
+
+void ckExport3() {
+  Serial.print(F("W3 "));
+  Serial.print(ckMeta.zRefPos);
+  Serial.print(F(" "));
+  Serial.print(ckMeta.x1Pos);
+  Serial.print(F(" "));
+  Serial.print(ckMeta.x2Pos);
+  Serial.print(F(" "));
+  Serial.print(ckMeta.globalA0Min);
+  Serial.print(F(" "));
+  Serial.print(ckMeta.globalA0Max);
+  
+  Serial.println();
+  
+  Serial.println(F("\n✅ Meta data export edildi!"));
+  Serial.print(F("   zRefPos    : ")); Serial.println(ckMeta.zRefPos);
+  Serial.print(F("   x1Pos      : ")); Serial.println(ckMeta.x1Pos);
+  Serial.print(F("   x2Pos      : ")); Serial.println(ckMeta.x2Pos);
+  Serial.print(F("   globalA0Min: ")); Serial.println(ckMeta.globalA0Min);
+  Serial.print(F("   globalA0Max: ")); Serial.println(ckMeta.globalA0Max);
+  Serial.println(F("   Yukarıdaki 'W3 ...' satırını kopyalayabilirsin."));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ✅ DÜZELTİLMİŞ IMPORT FONKSİYONLARI
+// ═══════════════════════════════════════════════════════════════
+
+bool ckImport1(String veriStr) {
+  Serial.println(F("\n╔════════════════════════════════════════════════╗"));
+  Serial.println(F("║           KAYIT1 IMPORT BAŞLIYOR               ║"));
+  Serial.println(F("╚════════════════════════════════════════════════╝\n"));
+  
+  if (veriStr.length() == 0) {
+    Serial.println(F("✗ HATA: Veri yok!"));
+    return false;
+  }
+  
+  // ✅ DÜZELTİLMİŞ PARSING: "enc,a0 enc,a0 enc,a0 ..."
+  int idx = 0;
+  uint16_t sampleIndex = 0;
+  
+  while (idx < veriStr.length() && sampleIndex < KAYIT_ORNEK_SAYISI) {
+    // Boşluk atla
+    while (idx < veriStr.length() && veriStr.charAt(idx) == ' ') {
+      idx++;
+    }
+    
+    if (idx >= veriStr.length()) break;
+    
+    // Encoder değerini oku (virgüle kadar)
+    int virgulIdx = veriStr.indexOf(',', idx);
+    if (virgulIdx == -1) break;
+    
+    String encStr = veriStr.substring(idx, virgulIdx);
+    kayit1[sampleIndex].enc = encStr.toInt();
+    idx = virgulIdx + 1;
+    
+    // A0 değerini oku (boşluğa kadar)
+    int boslukIdx = veriStr.indexOf(' ', idx);
+    if (boslukIdx == -1) {
+      // Son örnek
+      String a0Str = veriStr.substring(idx);
+      a0Str.trim();
+      kayit1[sampleIndex].a0 = a0Str.toInt();
+      sampleIndex++;
+      break;
+    } else {
+      String a0Str = veriStr.substring(idx, boslukIdx);
+      kayit1[sampleIndex].a0 = a0Str.toInt();
+      sampleIndex++;
+      idx = boslukIdx + 1;
+    }
+  }
+  
+  Serial.println(F("✅ IMPORT TAMAMLANDI!"));
+  Serial.println(F("─────────────────────────────────────────────"));
+  Serial.print(F("  Samples : ")); Serial.println(sampleIndex);
+  Serial.println(F("─────────────────────────────────────────────"));
+  
+  if (sampleIndex > 0) {
+    Serial.print(F("  İlk: kayit1[0] = {enc:"));
+    Serial.print(kayit1[0].enc);
+    Serial.print(F(", a0:"));
+    Serial.print(kayit1[0].a0);
+    Serial.println(F("}"));
+    
+    if (sampleIndex > 1) {
+      Serial.print(F("  Son: kayit1["));
+      Serial.print(sampleIndex - 1);
+      Serial.print(F("] = {enc:"));
+      Serial.print(kayit1[sampleIndex - 1].enc);
+      Serial.print(F(", a0:"));
+      Serial.print(kayit1[sampleIndex - 1].a0);
+      Serial.println(F("}"));
+    }
+  }
+  
+  Serial.println(F("\n✓ Kayit1 yüklendi! (Meta data için W3 komutu gerekli)"));
+  Serial.println();
+  
+  return true;
+}
+
+bool ckImport2(String veriStr) {
+  Serial.println(F("\n╔════════════════════════════════════════════════╗"));
+  Serial.println(F("║           KAYIT2 IMPORT BAŞLIYOR               ║"));
+  Serial.println(F("╚════════════════════════════════════════════════╝\n"));
+  
+  if (veriStr.length() == 0) {
+    Serial.println(F("✗ HATA: Veri yok!"));
+    return false;
+  }
+  
+  // ✅ DÜZELTİLMİŞ PARSING
+  int idx = 0;
+  uint16_t sampleIndex = 0;
+  
+  while (idx < veriStr.length() && sampleIndex < KAYIT_ORNEK_SAYISI) {
+    // Boşluk atla
+    while (idx < veriStr.length() && veriStr.charAt(idx) == ' ') {
+      idx++;
+    }
+    
+    if (idx >= veriStr.length()) break;
+    
+    // Encoder değerini oku
+    int virgulIdx = veriStr.indexOf(',', idx);
+    if (virgulIdx == -1) break;
+    
+    String encStr = veriStr.substring(idx, virgulIdx);
+    kayit2[sampleIndex].enc = encStr.toInt();
+    idx = virgulIdx + 1;
+    
+    // A0 değerini oku
+    int boslukIdx = veriStr.indexOf(' ', idx);
+    if (boslukIdx == -1) {
+      String a0Str = veriStr.substring(idx);
+      a0Str.trim();
+      kayit2[sampleIndex].a0 = a0Str.toInt();
+      sampleIndex++;
+      break;
+    } else {
+      String a0Str = veriStr.substring(idx, boslukIdx);
+      kayit2[sampleIndex].a0 = a0Str.toInt();
+      sampleIndex++;
+      idx = boslukIdx + 1;
+    }
+  }
+  
+  Serial.print(F("✅ OK: Kayit2 - "));
+  Serial.print(sampleIndex);
+  Serial.println(F(" sample yüklendi!"));
+  
+  Serial.println(F("\n✓ Kayit2 yüklendi! (Meta data için W3 komutu gerekli)"));
+  Serial.println();
+  
+  return true;
+}
+
+bool ckImport3(String veriStr) {
+  Serial.println(F("\n╔════════════════════════════════════════════════╗"));
+  Serial.println(F("║           META DATA IMPORT BAŞLIYOR            ║"));
+  Serial.println(F("╚════════════════════════════════════════════════╝\n"));
+  
+  if (veriStr.length() == 0) {
+    Serial.println(F("✗ HATA: Veri yok!"));
+    return false;
+  }
+  
+  // Parse meta verileri
+  int start = 0;
+  int end;
+  
+  // zRefPos
+  end = veriStr.indexOf(' ', start);
+  if (end == -1) {
+    Serial.println(F("✗ HATA: zRefPos bulunamadı!"));
+    return false;
+  }
+  ckMeta.zRefPos = veriStr.substring(start, end).toInt();
+  start = end + 1;
+  
+  // x1Pos
+  end = veriStr.indexOf(' ', start);
+  if (end == -1) {
+    Serial.println(F("✗ HATA: x1Pos bulunamadı!"));
+    return false;
+  }
+  ckMeta.x1Pos = veriStr.substring(start, end).toInt();
+  start = end + 1;
+  
+  // x2Pos
+  end = veriStr.indexOf(' ', start);
+  if (end == -1) {
+    Serial.println(F("✗ HATA: x2Pos bulunamadı!"));
+    return false;
+  }
+  ckMeta.x2Pos = veriStr.substring(start, end).toInt();
+  start = end + 1;
+  
+  // globalA0Min
+  end = veriStr.indexOf(' ', start);
+  if (end == -1) {
+    Serial.println(F("✗ HATA: globalA0Min bulunamadı!"));
+    return false;
+  }
+  ckMeta.globalA0Min = veriStr.substring(start, end).toInt();
+  start = end + 1;
+  
+  // globalA0Max
+  String maxStr = veriStr.substring(start);
+  maxStr.trim();
+  if (maxStr.length() == 0) {
+    Serial.println(F("✗ HATA: globalA0Max bulunamadı!"));
+    return false;
+  }
+  ckMeta.globalA0Max = maxStr.toInt();
+  
+  // Global değişkenleri de güncelle
+  globalA0Min = ckMeta.globalA0Min;
+  globalA0Max = ckMeta.globalA0Max;
+  
+  // DURUM GÜNCELLEMESİ - ÇOK ÖNEMLİ!
+  ckMeta.valid = true;
+  durum = CK_TAMAMLANDI;
+  
+  Serial.println(F("✅ META DATA IMPORT TAMAMLANDI!"));
+  Serial.println(F("─────────────────────────────────────────────"));
+  Serial.print(F("  zRefPos    : ")); Serial.println(ckMeta.zRefPos);
+  Serial.print(F("  x1Pos      : ")); Serial.println(ckMeta.x1Pos);
+  Serial.print(F("  x2Pos      : ")); Serial.println(ckMeta.x2Pos);
+  Serial.print(F("  globalA0Min: ")); Serial.println(ckMeta.globalA0Min);
+  Serial.print(F("  globalA0Max: ")); Serial.println(ckMeta.globalA0Max);
+  Serial.print(F("  A0 Aralık  : ")); Serial.println(ckMeta.globalA0Max - ckMeta.globalA0Min);
+  Serial.println(F("─────────────────────────────────────────────"));
+  
+  Serial.println(F("\n✅ TÜM VERİLER YÜKLENDİ!"));
+  Serial.println(F("✓ CO komutuyla oynatma başlatılabilir!"));
+  Serial.println();
+  
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TEMİZLEME FONKSİYONLARI
+// ═══════════════════════════════════════════════════════════════
+
+void ckTemizle1() {
+  for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
+    kayit1[i].enc = 0;
+    kayit1[i].a0 = 0;
+  }
+  Serial.println(F("✅ Kayit1 temizlendi!"));
+}
+
+void ckTemizle2() {
+  for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
+    kayit2[i].enc = 0;
+    kayit2[i].a0 = 0;
+  }
+  Serial.println(F("✅ Kayit2 temizlendi!"));
+}
+
+void ckHepsiniTemizle() {
+  ckTemizle1();
+  ckTemizle2();
+  ckMeta.valid = false;
+  ckMeta.globalA0Min = 1023;
+  ckMeta.globalA0Max = 0;
+  globalA0Min = 1023;
+  globalA0Max = 0;
+  durum = CK_KAPALI;
+  Serial.println(F("✅ Tüm kayıtlar ve meta veriler temizlendi!"));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STREAM IMPORT FONKSİYONLARI
+// ═══════════════════════════════════════════════════════════════
+
+bool ckImportStream1() {
+  Serial.println(F("\n╔═══════════════════════════════════════════╗"));
+  Serial.println(F("║      KAYIT1 STREAM IMPORT BAŞLIYOR        ║"));
+  Serial.println(F("╚═══════════════════════════════════════════╝"));
+  Serial.println(F("Format: enc,a0 enc,a0 enc,a0 ..."));
+  Serial.println(F("Bitirmek için: END"));
+  Serial.println(F("Veri göndermeye başlayın:\n"));
+  
+  uint16_t idx = 0;
+  String buffer = "";
+  buffer.reserve(20); // Küçük buffer (bellek optimizasyonu)
+  
+  while (idx < KAYIT_ORNEK_SAYISI) {
+    while (Serial.available() > 0) {
+      char c = Serial.read();
+      
+      // Boşluk veya satır sonu = bir örnek tamamlandı
+      if (c == ' ' || c == '\n' || c == '\r') {
+        if (buffer.length() > 0) {
+          // "END" kontrolü
+          if (buffer.equals("END")) {
+            Serial.println(F("\n\n✓ Stream tamamlandı!"));
+            Serial.print(F("Yüklenen örnek: ")); Serial.println(idx);
+            return true;
+          }
+          
+          // Parse et: "enc,a0"
+          int virPos = buffer.indexOf(',');
+          if (virPos > 0 && virPos < buffer.length() - 1) {
+            long enc = buffer.substring(0, virPos).toInt();
+            uint16_t a0 = buffer.substring(virPos + 1).toInt();
+            
+            kayit1[idx].enc = enc;
+            kayit1[idx].a0 = a0;
+            idx++;
+            
+            // Her 10 örnekte bir nokta göster
+            if (idx % 10 == 0) {
+              Serial.print(F("."));
+              if (idx % 100 == 0) {
+                Serial.print(F(" ")); Serial.println(idx);
+              }
+            }
+          }
+          buffer = "";
+        }
+      }
+      else {
+        buffer += c;
+        // Buffer overflow koruması
+        if (buffer.length() > 50) {
+          Serial.println(F("\n✗ Format hatası! Buffer overflow!"));
+          buffer = "";
+        }
+      }
+    }
+  }
+  
+  Serial.println(F("\n✓ Tüm örnekler alındı!"));
+  Serial.print(F("Toplam: ")); Serial.println(idx);
+  return true;
+}
+
+bool ckImportStream2() {
+  Serial.println(F("\n╔═══════════════════════════════════════════╗"));
+  Serial.println(F("║      KAYIT2 STREAM IMPORT BAŞLIYOR        ║"));
+  Serial.println(F("╚═══════════════════════════════════════════╝"));
+  Serial.println(F("Format: enc,a0 enc,a0 enc,a0 ..."));
+  Serial.println(F("Bitirmek için: END"));
+  Serial.println(F("Veri göndermeye başlayın:\n"));
+  
+  uint16_t idx = 0;
+  String buffer = "";
+  buffer.reserve(20);
+  
+  while (idx < KAYIT_ORNEK_SAYISI) {
+    while (Serial.available() > 0) {
+      char c = Serial.read();
+      
+      if (c == ' ' || c == '\n' || c == '\r') {
+        if (buffer.length() > 0) {
+          if (buffer.equals("END")) {
+            Serial.println(F("\n\n✓ Stream tamamlandı!"));
+            Serial.print(F("Yüklenen örnek: ")); Serial.println(idx);
+            return true;
+          }
+          
+          int virPos = buffer.indexOf(',');
+          if (virPos > 0 && virPos < buffer.length() - 1) {
+            long enc = buffer.substring(0, virPos).toInt();
+            uint16_t a0 = buffer.substring(virPos + 1).toInt();
+            
+            kayit2[idx].enc = enc;
+            kayit2[idx].a0 = a0;
+            idx++;
+            
+            if (idx % 10 == 0) {
+              Serial.print(F("."));
+              if (idx % 100 == 0) {
+                Serial.print(F(" ")); Serial.println(idx);
+              }
+            }
+          }
+          buffer = "";
+        }
+      }
+      else {
+        buffer += c;
+        if (buffer.length() > 50) {
+          Serial.println(F("\n✗ Format hatası!"));
+          buffer = "";
+        }
+      }
+    }
+  }
+  
+  Serial.println(F("\n✓ Tüm örnekler alındı!"));
+  Serial.print(F("Toplam: ")); Serial.println(idx);
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STREAM EXPORT FONKSİYONLARI
+// ═══════════════════════════════════════════════════════════════
+
+void ckExportStream1() {
+  Serial.println(F("\n╔═══════════════════════════════════════════╗"));
+  Serial.println(F("║      KAYIT1 STREAM EXPORT                 ║"));
+  Serial.println(F("╚═══════════════════════════════════════════╝"));
+  Serial.println(F("W1 "));
+  
+  for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
+    Serial.print(kayit1[i].enc);
+    Serial.print(F(","));
+    Serial.print(kayit1[i].a0);
+    
+    if (i < KAYIT_ORNEK_SAYISI - 1) {
+      Serial.print(F(" "));
+    }
+    
+    // Her 10 örnekte bir nokta
+    if ((i + 1) % 10 == 0) {
+      Serial.print(F("."));
+      // Her 100 örnekte satır atla
+      if ((i + 1) % 100 == 0) {
+        Serial.println();
+      }
+    }
+  }
+  
+  Serial.println(F(" END"));
+  Serial.println(F("\n✓ Export tamamlandı!"));
+}
+
+void ckExportStream2() {
+  Serial.println(F("\n╔═══════════════════════════════════════════╗"));
+  Serial.println(F("║      KAYIT2 STREAM EXPORT                 ║"));
+  Serial.println(F("╚═══════════════════════════════════════════╗"));
+  Serial.println(F("W2 "));
+  
+  for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
+    Serial.print(kayit2[i].enc);
+    Serial.print(F(","));
+    Serial.print(kayit2[i].a0);
+    
+    if (i < KAYIT_ORNEK_SAYISI - 1) {
+      Serial.print(F(" "));
+    }
+    
+    if ((i + 1) % 10 == 0) {
+      Serial.print(F("."));
+      if ((i + 1) % 100 == 0) {
+        Serial.println();
+      }
+    }
+  }
+  
+  Serial.println(F(" END"));
+  Serial.println(F("\n✓ Export tamamlandı!"));
 }

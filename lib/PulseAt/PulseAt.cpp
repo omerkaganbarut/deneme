@@ -1,11 +1,4 @@
 // PulseAt.cpp - STEP MOTOR PARALEL SÜRÜŞ MODÜLÜ v3
-// ═══════════════════════════════════════════════════════════════
-// ÜÇ TİP DURDURMA:
-// 1. pulseAtDurdur()      → Segment geçişleri (ENA LOW kalsın)
-// 2. pulseAtTamamla()     → İşlem tamamı (ENA HIGH - enerji kes)
-// 3. pulseAtAcilDurdur()  → Acil durdurma (ENA HIGH)
-// ═══════════════════════════════════════════════════════════════
-
 #include "PulseAt.h"
 #include "Config.h"
 
@@ -84,16 +77,17 @@ void pulseAt(unsigned long toplamPulse, int yon, unsigned int hertz) {
   }
   
   // ───────────────────────────────────────────────────────────
-  // ARKA PLAN
+  // ARKA PLAN ÇALIŞMASI
   // ───────────────────────────────────────────────────────────
   if (!S.aktif) return;
   
   unsigned long now = micros();
   
   if (now - S.lastUs >= S.periodUs) {
-    // ✅ DRİFT ÖNLEME: lastUs'a periyot ekle
+    // Drift önleme: lastUs'a periyot ekle
     S.lastUs += S.periodUs;
     
+    // Pulse gönder
     digitalWrite(stepPins[m], HIGH);
     delayMicroseconds(PULSE_HIGH_US);
     digitalWrite(stepPins[m], LOW);
@@ -101,7 +95,6 @@ void pulseAt(unsigned long toplamPulse, int yon, unsigned int hertz) {
     if (++S.sayac >= S.hedef) {
       S.aktif = false;
       S.bittiEdge = true;
-      // ✅ ENA HIGH YAPMA! (Segment geçişlerinde motor aktif kalmalı)
     }
   }
 }
@@ -126,30 +119,25 @@ bool pulseAtBittiMi(uint8_t motorIndex) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 1️⃣ SEGMENT GEÇİŞİ DURDURMA (ENA LOW kalsın - pozisyon koru)
+// SEGMENT GEÇİŞİ DURDURMA (ENA LOW kalsın)
 // ═══════════════════════════════════════════════════════════════
 void pulseAtDurdur(uint8_t motorIndex) {
   if (motorIndex > 2) return;
   
-  // ✅ SADECE DURUMU TEMİZLE (ENA LOW - motor pozisyonu korunsun)
   noInterrupts();
   st[motorIndex].aktif = false;
   st[motorIndex].bittiEdge = false;
   st[motorIndex].sayac = 0;
   st[motorIndex].hedef = 0;
   interrupts();
-  
-  // NOT: ENA LOW kaldı → Motor pozisyonunu koruyor
-  //      Segment geçişlerinde, başlangıç konumlarında kullan
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 2️⃣ İŞLEM TAMAMLAMA DURDURMA (ENA HIGH - enerji kes)
+// İŞLEM TAMAMLAMA DURDURMA (ENA HIGH - enerji kes)
 // ═══════════════════════════════════════════════════════════════
 void pulseAtTamamla(uint8_t motorIndex) {
   if (motorIndex > 2) return;
   
-  // 1. Durumu temizle
   noInterrupts();
   st[motorIndex].aktif = false;
   st[motorIndex].bittiEdge = false;
@@ -157,20 +145,15 @@ void pulseAtTamamla(uint8_t motorIndex) {
   st[motorIndex].hedef = 0;
   interrupts();
   
-  // 2. ✅ MOTOR DİNLENDİR (ENA HIGH - enerji tasarrufu)
   digitalWrite(enaPins[motorIndex], HIGH);
-  
-  // NOT: İşlem tamamen bittiğinde kullan
-  //      Kayıt/Oynatma/MoveTo tamamlandığında
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 3️⃣ ACİL DURDURMA (ENA HIGH - hemen kes!)
+// ACİL DURDURMA (ENA HIGH)
 // ═══════════════════════════════════════════════════════════════
 void pulseAtAcilDurdur(uint8_t motorIndex) {
   if (motorIndex > 2) return;
   
-  // 1. Durumu temizle
   noInterrupts();
   st[motorIndex].aktif = false;
   st[motorIndex].bittiEdge = false;
@@ -178,26 +161,23 @@ void pulseAtAcilDurdur(uint8_t motorIndex) {
   st[motorIndex].hedef = 0;
   interrupts();
   
-  // 2. ✅ MOTOR ACİL DURDUR (ENA HIGH)
   digitalWrite(enaPins[motorIndex], HIGH);
-  
-  // NOT: Acil durdurma butonunda ('S' komutu) kullan
 }
 
 // ═══════════════════════════════════════════════════════════════
-// HEPS İNİ ACİL DURDUR
+// HEPSİNİ ACİL DURDUR
 // ═══════════════════════════════════════════════════════════════
 void pulseAtHepsiniDurdur() {
   for (uint8_t i = 0; i < 3; i++) {
-    pulseAtAcilDurdur(i);  // ✅ Acil durdurma kullan
+    pulseAtAcilDurdur(i);
   }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// HEPSİNİ TAMAMLA (İşlem bittiğinde)
+// HEPSİNİ TAMAMLA
 // ═══════════════════════════════════════════════════════════════
 void pulseAtHepsiniTamamla() {
   for (uint8_t i = 0; i < 3; i++) {
-    pulseAtTamamla(i);  // ✅ Tamamlama kullan
+    pulseAtTamamla(i);
   }
 }

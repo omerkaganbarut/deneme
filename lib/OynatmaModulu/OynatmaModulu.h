@@ -1,74 +1,78 @@
-// OynatmaModulu.h - v2.4
-// ✅ Z encoder desteği
-// ✅ Dinamik parametre sistemi
-
+// OynatmaModulu.h - v7.0 DİNAMİK DEPO ÇAPI + DUR/DEVAM
 #ifndef OYNATMAMODULU_H
 #define OYNATMAMODULU_H
 
 #include <Arduino.h>
 #include "stepmotorenkoderiokuma.h"
+#include "CiftKayitModulu.h"
 
 // ═══════════════════════════════════════════════════════════════
-// FONKSİYON TANIMLARI
+// TEMEL FONKSİYONLAR
 // ═══════════════════════════════════════════════════════════════
-
-/**
- * @brief Encoder pointer'larını ayarla
- * 
- * KULLANIM (main.cpp setup içinde):
- *   StepMotorEncoder bigEnc(ENC3_A_PIN, ENC3_B_PIN);
- *   StepMotorEncoder zEnc(ENC2_A_PIN, ENC2_B_PIN);
- *   
- *   bigEnc.begin();
- *   zEnc.begin();
- *   oynatmaEncoderSetup(&bigEnc, &zEnc);
- */
 void oynatmaEncoderSetup(StepMotorEncoder* bigEncoder, StepMotorEncoder* zEncoder);
-
-/**
- * @brief Dinamik parametre pointer'larını ayarla
- * 
- * KULLANIM (main.cpp setup içinde):
- *   static long bigFreqMin = 20;
- *   static long bigFreqMax = 50;
- *   static long zEncMin = 0;
- *   static long zEncMax = 20000;
- *   
- *   oynatmaParametreSetup(&bigFreqMin, &bigFreqMax, &zEncMin, &zEncMax);
- */
 void oynatmaParametreSetup(long* bigFreqMin, long* bigFreqMax, long* zEncMin, long* zEncMax);
+void oynatmaRefHizSetup(long* bigFreqRefPtr);
+void oynatmaDepoCapSetup(float* depoCapMm);  // ✅ YENİ: Dinamik depo çapı
 
-/**
- * @brief Oynatma işlemini başlatır (gerçek başlatma)
- * 
- * NOT: Ana menüden "O" komutuyla DOĞRUDAN çağrılmaz!
- *      Önce parametre onayı alınır, sonra bu fonksiyon çağrılır.
- */
-void oynatmaBaslatGercek();
-
-/**
- * @brief Oynatma arka plan döngüsü (her loop'ta çağrılır)
- */
+void oynatmaBaslatKayit(const Sample* kayit, uint16_t ornekSayisi);
 void oynatmaRun();
 
-/**
- * @brief Oynatma aktif mi?
- */
 bool oynatmaAktifMi();
-
-/**
- * @brief Oynatma tamamlandı mı?
- */
 bool oynatmaTamamlandiMi();
-
-/**
- * @brief Şu anki segment index
- */
 uint16_t oynatmaSegmentIndex();
 
-/**
- * @brief Oynatma acil durdur
- */
 void oynatmaDurdur();
+
+// ═══════════════════════════════════════════════════════════════
+// DUR/DEVAM FONKSİYONLARI
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * @brief Oynatmayı duraklat (pause)
+ * Motorlar durur, index korunur, kaldığı yerden devam edilebilir
+ */
+void oynatmaDuraklat();
+
+/**
+ * @brief Oynatmaya devam et (resume)
+ * Duraklatılan yerden devam eder
+ */
+void oynatmaDevamEt();
+
+/**
+ * @brief Oynatma duraklatıldı mı?
+ */
+bool oynatmaDuraklatildiMi();
+
+// ═══════════════════════════════════════════════════════════════
+// 🔧 PUBLIC HELPER FONKSİYONLAR (Mapping)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * @brief Global A0 aralığına göre Z max offset hesapla
+ * @return Z encoder max offset değeri
+ */
+long oynatmaHesaplaZMaxOffset();
+
+/**
+ * @brief A0 → Z encoder offseti mapping
+ * @param a0 A0 sensör değeri
+ * @return Z encoder offset (0 ile zMaxOffset arası)
+ */
+long oynatmaMapA0ToZOffset(uint16_t a0);
+
+/**
+ * @brief A0 → Z encoder hedef pozisyon (referans + offset)
+ * @param a0 A0 sensör değeri
+ * @return Z encoder hedef pozisyonu (ckMeta.zRefPos + offset)
+ */
+long oynatmaMapA0ToZEnc(uint16_t a0);
+
+/**
+ * @brief A0 → BIG motor frekans mapping (ters orantılı)
+ * @param a0 A0 sensör değeri
+ * @return BIG motor frekansı (Hz)
+ */
+unsigned int oynatmaMapA0ToBigFreq(uint16_t a0);
 
 #endif // OYNATMAMODULU_H

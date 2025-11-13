@@ -1,4 +1,4 @@
-// MoveTo.h - İVMELİ HAREKET MODÜLÜ v3 - MOTOR BAZLI RAMPA + KESİN HEDEF
+// MoveTo.h - İVMELİ HAREKET MODÜLÜ v4 - TEMİZ VERSİYON
 #ifndef MOVETO_H
 #define MOVETO_H
 
@@ -11,31 +11,39 @@
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * @brief Encoder pointer'larını kaydet
- * 
- * @param encZ Z motor encoder'ı
- * @param encX X motor encoder'ı
- * @param encB BIG motor encoder'ı
+ * @brief Encoder pointer'larını kaydet (setup'ta bir kez çağır)
  */
 void moveToSetup(StepMotorEncoder* encZ, 
                  StepMotorEncoder* encX, 
                  StepMotorEncoder* encB);
 
 /**
- * @brief İvmeli hareket başlat (Motor bazlı rampa)
+ * @brief İvmeli hareket başlat
+ * 
+ * ÇALIŞMA PRENSİBİ:
+ * - Motor bazlı rampa parametreleri (Config.h)
+ * - 3 faz: Hızlanma → Sabit Hız → Yavaşlama
+ * - Salınım modu: Daha kısa rampa (hızlı geçişler)
  * 
  * @param motorIndex Motor (MOTOR_Z=0, MOTOR_X=1, MOTOR_B=2)
  * @param hedefEnc Hedef encoder pozisyonu
  * @param maxHz Maximum hız (Hz)
- * @return true Başarılı
- * @return false Başarısız
+ * @param salinimModu true = Salınım modu (hızlı rampa)
+ *                    false = Normal mod (default)
+ * @return true Başarıyla başlatıldı
  * 
- * YENİ ÖZELLİKLER:
- *   - Motor bazlı rampa (Z:4000p, X:3000p, BIG:200p)
- *   - Kesin hedef (tolerans yok, matematik olarak kesin)
- *   - Encoder'dan bağımsız pulse hesabı
+ * ÖRNEKLER:
+ *   moveTo(MOTOR_X, 10000, 5000);        // Normal: 6000p rampa
+ *   moveTo(MOTOR_X, 10000, 8000, true);  // Salınım: 600p rampa
  */
-bool moveTo(uint8_t motorIndex, long hedefEnc, unsigned int maxHz);
+bool moveTo(uint8_t motorIndex, long hedefEnc, unsigned int maxHz, bool salinimModu = false);
+
+/**
+ * @brief Motor hareket ediyor mu?
+ * @param motorIndex Motor
+ * @return true Motor aktif
+ */
+bool moveToAktifMi(uint8_t motorIndex);
 
 /**
  * @brief MoveTo arka plan döngüsü (her loop'ta çağır!)
@@ -43,27 +51,20 @@ bool moveTo(uint8_t motorIndex, long hedefEnc, unsigned int maxHz);
 void moveToRun();
 
 /**
- * @brief Motor hedefe ulaştı mı? (edge detection)
+ * @brief Motor hedefe ulaştı mı? (Edge detection)
+ * @param motorIndex Motor
+ * @return true Bir kez true döner, sonra false
  */
 bool moveToBittiMi(uint8_t motorIndex);
 
 /**
- * @brief Motor aktif mi?
- */
-bool moveToAktifMi(uint8_t motorIndex);
-
-/**
- * @brief Hedefe kalan pulse sayısı
- */
-long moveToKalan(uint8_t motorIndex);
-
-/**
- * @brief Motoru acil durdur
+ * @brief Motoru durdur
+ * @param motorIndex Motor
  */
 void moveToDurdur(uint8_t motorIndex);
 
 /**
- * @brief Tüm motorları acil durdur
+ * @brief Tüm motorları durdur
  */
 void moveToHepsiniDurdur();
 
