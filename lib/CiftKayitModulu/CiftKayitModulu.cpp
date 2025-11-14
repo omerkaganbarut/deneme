@@ -1,4 +1,4 @@
-// CiftKayitModulu.cpp - v8.1 DÜZELTİLMİŞ IMPORT FONKSİYONLARI
+// CiftKayitModulu.cpp - v9.0 TEMİZ VERSİYON
 #include "CiftKayitModulu.h"
 #include "Config.h"
 #include "KayitModulu.h"
@@ -35,9 +35,7 @@ static int yon2 = 1;
 // ═══════════════════════════════════════════════════════════════
 Sample kayit1[KAYIT_ORNEK_SAYISI];
 Sample kayit2[KAYIT_ORNEK_SAYISI];
-CK_MetaData ckMeta = {0, 0, 0, 1023, 0, false};
-uint16_t globalA0Min = 1023;
-uint16_t globalA0Max = 0;
+CK_MetaData ckMeta = {0, 0, 0, 30.0, 520.0};
 
 // ═══════════════════════════════════════════════════════════════
 // ENCODER SETUP
@@ -45,6 +43,29 @@ uint16_t globalA0Max = 0;
 void ckEncoderSetup(StepMotorEncoder* bigEncoder, StepMotorEncoder* xEncoder) {
   bigEnc = bigEncoder;
   xEnc = xEncoder;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GLOBAL A0 MIN/MAX HESAPLAMA
+// ═══════════════════════════════════════════════════════════════
+void ckHesaplaGlobalA0MinMax(uint16_t* outMin, uint16_t* outMax) {
+  uint16_t minVal = 1023;
+  uint16_t maxVal = 0;
+  
+  // Kayıt1'den tara
+  for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
+    if (kayit1[i].a0 < minVal) minVal = kayit1[i].a0;
+    if (kayit1[i].a0 > maxVal) maxVal = kayit1[i].a0;
+  }
+  
+  // Kayıt2'den tara
+  for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
+    if (kayit2[i].a0 < minVal) minVal = kayit2[i].a0;
+    if (kayit2[i].a0 > maxVal) maxVal = kayit2[i].a0;
+  }
+  
+  *outMin = minVal;
+  *outMax = maxVal;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -61,9 +82,6 @@ void ckBaslat(long x1Enc, long x2Enc, int kayit1Yon, int kayit2Yon) {
   ckMeta.x1Pos = x1Enc;
   ckMeta.x2Pos = x2Enc;
   ckMeta.zRefPos = 0;
-  ckMeta.globalA0Min = 1023;
-  ckMeta.globalA0Max = 0;
-  ckMeta.valid = false;
   
   x1Hedef = x1Enc;
   x2Hedef = x2Enc;
@@ -212,24 +230,13 @@ void ckRun() {
           kayit2[i].a0 = src[i].a0;
         }
         
-        // GLOBAL A0 MIN/MAX HESAPLA (İKİSİNDEN DE EN KÜÇÜK VE EN BÜYÜK)
-        globalA0Min = 1023;
-        globalA0Max = 0;
+        Serial.println(F("→ Kayıt2 kaydedildi."));
+        Serial.print(F("  Örnek sayısı: "));
+        Serial.println(kayitOrnekSayisi());
         
-        for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
-          if (kayit1[i].a0 < globalA0Min) globalA0Min = kayit1[i].a0;
-          if (kayit1[i].a0 > globalA0Max) globalA0Max = kayit1[i].a0;
-        }
-        
-        for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
-          if (kayit2[i].a0 < globalA0Min) globalA0Min = kayit2[i].a0;
-          if (kayit2[i].a0 > globalA0Max) globalA0Max = kayit2[i].a0;
-        }
-        
-        // Meta verilere kaydet
-        ckMeta.globalA0Min = globalA0Min;
-        ckMeta.globalA0Max = globalA0Max;
-        ckMeta.valid = true;
+        // Global A0 hesapla ve göster
+        uint16_t a0Min, a0Max;
+        ckHesaplaGlobalA0MinMax(&a0Min, &a0Max);
         
         Serial.println(F("\n╔════════════════════════════════════════════════╗"));
         Serial.println(F("║          ÇİFT KAYIT TAMAMLANDI! ✓              ║"));
@@ -238,11 +245,11 @@ void ckRun() {
         Serial.println(F("─────────────────────────────────────────────────"));
         Serial.println(F("GLOBAL A0 ARALIĞI:"));
         Serial.print(F("  Min   : "));
-        Serial.println(globalA0Min);
+        Serial.println(a0Min);
         Serial.print(F("  Max   : "));
-        Serial.println(globalA0Max);
+        Serial.println(a0Max);
         Serial.print(F("  Aralık: "));
-        Serial.println(globalA0Max - globalA0Min);
+        Serial.println(a0Max - a0Min);
         Serial.println(F("─────────────────────────────────────────────────\n"));
         
         Serial.println(F("✓ Çift oynatma için hazır!"));
@@ -287,8 +294,6 @@ void ckDurdur() {
 // EXPORT FONKSİYONLARI
 // ═══════════════════════════════════════════════════════════════
 
-
-
 void ckExport3() {
   Serial.print(F("W3 "));
   Serial.print(ckMeta.zRefPos);
@@ -297,9 +302,9 @@ void ckExport3() {
   Serial.print(F(" "));
   Serial.print(ckMeta.x2Pos);
   Serial.print(F(" "));
-  Serial.print(ckMeta.globalA0Min);
+  Serial.print(ckMeta.bigFreqRef, 1);
   Serial.print(F(" "));
-  Serial.print(ckMeta.globalA0Max);
+  Serial.print(ckMeta.depoCapMm, 1);
   
   Serial.println();
   
@@ -307,16 +312,14 @@ void ckExport3() {
   Serial.print(F("   zRefPos    : ")); Serial.println(ckMeta.zRefPos);
   Serial.print(F("   x1Pos      : ")); Serial.println(ckMeta.x1Pos);
   Serial.print(F("   x2Pos      : ")); Serial.println(ckMeta.x2Pos);
-  Serial.print(F("   globalA0Min: ")); Serial.println(ckMeta.globalA0Min);
-  Serial.print(F("   globalA0Max: ")); Serial.println(ckMeta.globalA0Max);
+  Serial.print(F("   bigFreqRef : ")); Serial.println(ckMeta.bigFreqRef);
+  Serial.print(F("   depoCapMm  : ")); Serial.println(ckMeta.depoCapMm);
   Serial.println(F("   Yukarıdaki 'W3 ...' satırını kopyalayabilirsin."));
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ✅ DÜZELTİLMİŞ IMPORT FONKSİYONLARI
+// IMPORT FONKSİYONLARI
 // ═══════════════════════════════════════════════════════════════
-
-
 
 bool ckImport3(String veriStr) {
   Serial.println(F("\n╔════════════════════════════════════════════════╗"));
@@ -328,71 +331,56 @@ bool ckImport3(String veriStr) {
     return false;
   }
   
-  // Parse meta verileri
   int start = 0;
   int end;
   
   // zRefPos
   end = veriStr.indexOf(' ', start);
-  if (end == -1) {
-    Serial.println(F("✗ HATA: zRefPos bulunamadı!"));
-    return false;
-  }
+  if (end == -1) { Serial.println(F("✗ HATA: zRefPos yok!")); return false; }
   ckMeta.zRefPos = veriStr.substring(start, end).toInt();
   start = end + 1;
   
   // x1Pos
   end = veriStr.indexOf(' ', start);
-  if (end == -1) {
-    Serial.println(F("✗ HATA: x1Pos bulunamadı!"));
-    return false;
-  }
+  if (end == -1) { Serial.println(F("✗ HATA: x1Pos yok!")); return false; }
   ckMeta.x1Pos = veriStr.substring(start, end).toInt();
   start = end + 1;
   
   // x2Pos
   end = veriStr.indexOf(' ', start);
-  if (end == -1) {
-    Serial.println(F("✗ HATA: x2Pos bulunamadı!"));
-    return false;
-  }
+  if (end == -1) { Serial.println(F("✗ HATA: x2Pos yok!")); return false; }
   ckMeta.x2Pos = veriStr.substring(start, end).toInt();
   start = end + 1;
   
-  // globalA0Min
+  // bigFreqRef
   end = veriStr.indexOf(' ', start);
-  if (end == -1) {
-    Serial.println(F("✗ HATA: globalA0Min bulunamadı!"));
-    return false;
-  }
-  ckMeta.globalA0Min = veriStr.substring(start, end).toInt();
+  if (end == -1) { Serial.println(F("✗ HATA: bigFreqRef yok!")); return false; }
+  ckMeta.bigFreqRef = veriStr.substring(start, end).toFloat();
   start = end + 1;
   
-  // globalA0Max
-  String maxStr = veriStr.substring(start);
-  maxStr.trim();
-  if (maxStr.length() == 0) {
-    Serial.println(F("✗ HATA: globalA0Max bulunamadı!"));
-    return false;
-  }
-  ckMeta.globalA0Max = maxStr.toInt();
+  // depoCapMm
+  String capStr = veriStr.substring(start);
+  capStr.trim();
+  if (capStr.length() == 0) { Serial.println(F("✗ HATA: depoCapMm yok!")); return false; }
+  ckMeta.depoCapMm = capStr.toFloat();
   
-  // Global değişkenleri de güncelle
-  globalA0Min = ckMeta.globalA0Min;
-  globalA0Max = ckMeta.globalA0Max;
-  
-  // DURUM GÜNCELLEMESİ - ÇOK ÖNEMLİ!
-  ckMeta.valid = true;
+  // DURUM GÜNCELLEMESİ
   durum = CK_TAMAMLANDI;
+  
+  // Global A0 hesapla ve göster
+  uint16_t a0Min, a0Max;
+  ckHesaplaGlobalA0MinMax(&a0Min, &a0Max);
   
   Serial.println(F("✅ META DATA IMPORT TAMAMLANDI!"));
   Serial.println(F("─────────────────────────────────────────────"));
   Serial.print(F("  zRefPos    : ")); Serial.println(ckMeta.zRefPos);
   Serial.print(F("  x1Pos      : ")); Serial.println(ckMeta.x1Pos);
   Serial.print(F("  x2Pos      : ")); Serial.println(ckMeta.x2Pos);
-  Serial.print(F("  globalA0Min: ")); Serial.println(ckMeta.globalA0Min);
-  Serial.print(F("  globalA0Max: ")); Serial.println(ckMeta.globalA0Max);
-  Serial.print(F("  A0 Aralık  : ")); Serial.println(ckMeta.globalA0Max - ckMeta.globalA0Min);
+  Serial.print(F("  bigFreqRef : ")); Serial.println(ckMeta.bigFreqRef);
+  Serial.print(F("  depoCapMm  : ")); Serial.println(ckMeta.depoCapMm);
+  Serial.print(F("  globalA0Min: ")); Serial.println(a0Min);
+  Serial.print(F("  globalA0Max: ")); Serial.println(a0Max);
+  Serial.print(F("  A0 Aralık  : ")); Serial.println(a0Max - a0Min);
   Serial.println(F("─────────────────────────────────────────────"));
   
   Serial.println(F("\n✅ TÜM VERİLER YÜKLENDİ!"));
@@ -425,11 +413,11 @@ void ckTemizle2() {
 void ckHepsiniTemizle() {
   ckTemizle1();
   ckTemizle2();
-  ckMeta.valid = false;
-  ckMeta.globalA0Min = 1023;
-  ckMeta.globalA0Max = 0;
-  globalA0Min = 1023;
-  globalA0Max = 0;
+  ckMeta.zRefPos = 0;
+  ckMeta.x1Pos = 0;
+  ckMeta.x2Pos = 0;
+  ckMeta.bigFreqRef = 30.0;
+  ckMeta.depoCapMm = 520.0;
   durum = CK_KAPALI;
   Serial.println(F("✅ Tüm kayıtlar ve meta veriler temizlendi!"));
 }
@@ -448,23 +436,20 @@ bool ckImportStream1() {
   
   uint16_t idx = 0;
   String buffer = "";
-  buffer.reserve(20); // Küçük buffer (bellek optimizasyonu)
+  buffer.reserve(20);
   
   while (idx < KAYIT_ORNEK_SAYISI) {
     while (Serial.available() > 0) {
       char c = Serial.read();
       
-      // Boşluk veya satır sonu = bir örnek tamamlandı
       if (c == ' ' || c == '\n' || c == '\r') {
         if (buffer.length() > 0) {
-          // "END" kontrolü
           if (buffer.equals("END")) {
             Serial.println(F("\n\n✓ Stream tamamlandı!"));
             Serial.print(F("Yüklenen örnek: ")); Serial.println(idx);
             return true;
           }
           
-          // Parse et: "enc,a0"
           int virPos = buffer.indexOf(',');
           if (virPos > 0 && virPos < buffer.length() - 1) {
             long enc = buffer.substring(0, virPos).toInt();
@@ -474,7 +459,6 @@ bool ckImportStream1() {
             kayit1[idx].a0 = a0;
             idx++;
             
-            // Her 10 örnekte bir nokta göster
             if (idx % 10 == 0) {
               Serial.print(F("."));
               if (idx % 100 == 0) {
@@ -487,7 +471,6 @@ bool ckImportStream1() {
       }
       else {
         buffer += c;
-        // Buffer overflow koruması
         if (buffer.length() > 50) {
           Serial.println(F("\n✗ Format hatası! Buffer overflow!"));
           buffer = "";
@@ -578,10 +561,8 @@ void ckExportStream1() {
       Serial.print(F(" "));
     }
     
-    // Her 10 örnekte bir nokta
     if ((i + 1) % 10 == 0) {
       Serial.print(F("."));
-      // Her 100 örnekte satır atla
       if ((i + 1) % 100 == 0) {
         Serial.println();
       }
@@ -595,7 +576,7 @@ void ckExportStream1() {
 void ckExportStream2() {
   Serial.println(F("\n╔═══════════════════════════════════════════╗"));
   Serial.println(F("║      KAYIT2 STREAM EXPORT                 ║"));
-  Serial.println(F("╚═══════════════════════════════════════════╗"));
+  Serial.println(F("╚═══════════════════════════════════════════╝"));
   Serial.println(F("W2 "));
   
   for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {

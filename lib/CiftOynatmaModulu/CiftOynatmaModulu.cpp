@@ -1,4 +1,4 @@
-// CiftOynatmaModulu.cpp - v10.0 DİNAMİK DEPO ÇAPI + META DATA FIX
+// CiftOynatmaModulu.cpp - v11.0 DİNAMİK A0 HESAPLAMA
 #include "CiftOynatmaModulu.h"
 #include "CiftKayitModulu.h"
 #include "OynatmaModulu.h"
@@ -56,11 +56,6 @@ static StepMotorEncoder* bigEnc = nullptr;
 static StepMotorEncoder* xEnc = nullptr;
 static StepMotorEncoder* zEnc = nullptr;
 
-static long* bigFreqMin_ptr = nullptr;
-static long* bigFreqMax_ptr = nullptr;
-static long* zEncMin_ptr = nullptr;
-static long* zEncMax_ptr = nullptr;
-
 static long x1Hedef = 0;
 static long x2Hedef = 0;
 
@@ -69,7 +64,6 @@ static bool zSifirlamaTamamlandi = false;
 // A0_MIN pozisyonu
 static long bigPosAtA0Min = 0;
 static long xPosAtA0Min = 0;
-
 
 // ═══════════════════════════════════════════════════════════════
 // ENCODER SETUP
@@ -83,29 +77,21 @@ void coEncoderSetup(StepMotorEncoder* bigEncoder,
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PARAMETRE SETUP
-// ═══════════════════════════════════════════════════════════════
-void coParametreSetup(long* bigFreqMin, long* bigFreqMax, 
-                      long* zEncMin, long* zEncMax) {
-  bigFreqMin_ptr = bigFreqMin;
-  bigFreqMax_ptr = bigFreqMax;
-  zEncMin_ptr = zEncMin;
-  zEncMax_ptr = zEncMax;
-}
-
-// ═══════════════════════════════════════════════════════════════
 // HELPER: GLOBAL A0 ARALIĞINA GÖRE A0_MIN POZISYONU BUL
 // ═══════════════════════════════════════════════════════════════
 static void hesaplaA0MinPozisyonu() {
+  uint16_t a0Min, a0Max;
+  ckHesaplaGlobalA0MinMax(&a0Min, &a0Max);
+  
   Serial.println(F("\n[CO] Sıfırlama pozisyonu aranıyor..."));
-  Serial.print(F("  Global A0 Min: ")); Serial.println(ckMeta.globalA0Min);
+  Serial.print(F("  Global A0 Min: ")); Serial.println(a0Min);
   
   bigPosAtA0Min = __LONG_MAX__;
   xPosAtA0Min = __LONG_MAX__;
   
   // Kayıt1'de ara
   for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
-    if (kayit1[i].a0 == ckMeta.globalA0Min) {
+    if (kayit1[i].a0 == a0Min) {
       bigPosAtA0Min = kayit1[i].enc;
       xPosAtA0Min = x1Hedef;
       
@@ -122,7 +108,7 @@ static void hesaplaA0MinPozisyonu() {
   // Kayıt2'de ara
   if (bigPosAtA0Min == __LONG_MAX__) {
     for (uint16_t i = 0; i < KAYIT_ORNEK_SAYISI; i++) {
-      if (kayit2[i].a0 == ckMeta.globalA0Min) {
+      if (kayit2[i].a0 == a0Min) {
         bigPosAtA0Min = kayit2[i].enc;
         xPosAtA0Min = x2Hedef;
         
@@ -255,9 +241,12 @@ void coRun() {
       // ORTAK FONKSİYON KULLAN
       long zHedef = ckMeta.zRefPos + oynatmaHesaplaZMaxOffset();
       
-      Serial.print(F("  Global A0 Min: ")); Serial.println(ckMeta.globalA0Min);
-      Serial.print(F("  Global A0 Max: ")); Serial.println(ckMeta.globalA0Max);
-      Serial.print(F("  A0 Aralığı: ")); Serial.println(ckMeta.globalA0Max - ckMeta.globalA0Min);
+      uint16_t a0Min, a0Max;
+      ckHesaplaGlobalA0MinMax(&a0Min, &a0Max);
+      
+      Serial.print(F("  Global A0 Min: ")); Serial.println(a0Min);
+      Serial.print(F("  Global A0 Max: ")); Serial.println(a0Max);
+      Serial.print(F("  A0 Aralığı: ")); Serial.println(a0Max - a0Min);
       Serial.print(F("  Z Referans: ")); Serial.println(ckMeta.zRefPos);
       Serial.print(F("  Z Max Offset: ")); Serial.println(oynatmaHesaplaZMaxOffset());
       Serial.print(F("  Hesaplanan Z Hedef: ")); Serial.println(zHedef);

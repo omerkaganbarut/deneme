@@ -1,4 +1,4 @@
-// OynatmaModulu.h - v7.0 DİNAMİK DEPO ÇAPI + DUR/DEVAM
+// OynatmaModulu.h - v10.0 PUNTA MODU + DİNAMİK A0
 #ifndef OYNATMAMODULU_H
 #define OYNATMAMODULU_H
 
@@ -10,9 +10,6 @@
 // TEMEL FONKSİYONLAR
 // ═══════════════════════════════════════════════════════════════
 void oynatmaEncoderSetup(StepMotorEncoder* bigEncoder, StepMotorEncoder* zEncoder);
-void oynatmaParametreSetup(long* bigFreqMin, long* bigFreqMax, long* zEncMin, long* zEncMax);
-void oynatmaRefHizSetup(long* bigFreqRefPtr);
-void oynatmaDepoCapSetup(float* depoCapMm);  // ✅ YENİ: Dinamik depo çapı
 
 void oynatmaBaslatKayit(const Sample* kayit, uint16_t ornekSayisi);
 void oynatmaRun();
@@ -43,6 +40,22 @@ void oynatmaDevamEt();
  * @brief Oynatma duraklatıldı mı?
  */
 bool oynatmaDuraklatildiMi();
+
+// ═══════════════════════════════════════════════════════════════
+// PUNTA MODU FONKSİYONLARI
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * @brief Punta modunu aç/kapat
+ * @param aktif true = Punta modu (5 segment → 2sn kaynak)
+ *              false = Normal mod (sürekli kaynak)
+ */
+void oynatmaPuntaModuAyarla(bool aktif);
+
+/**
+ * @brief Punta modu aktif mi?
+ */
+bool oynatmaPuntaModuAktifMi();
 
 // ═══════════════════════════════════════════════════════════════
 // 🔧 PUBLIC HELPER FONKSİYONLAR (Mapping)

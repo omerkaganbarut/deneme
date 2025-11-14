@@ -1,4 +1,4 @@
-// OynatmaModulu.cpp - v7.0 DİNAMİK DEPO ÇAPI + DUR/DEVAM
+// OynatmaModulu.cpp - v10.0 PUNTA MODU + DİNAMİK A0
 #include "OynatmaModulu.h"
 #include "Config.h"
 #include "CiftKayitModulu.h"
@@ -11,6 +11,7 @@
 enum OynatmaDurum {
   OY_KAPALI = 0,
   OY_SEGMENT_OYNAT,
+  OY_PUNTA_KAYNAK,
   OY_DURAKLATILDI,
   OY_TAMAMLANDI
 };
@@ -24,13 +25,15 @@ static uint16_t idx = 0;
 static StepMotorEncoder* bigEnc = nullptr;
 static StepMotorEncoder* zEnc = nullptr;
 
-static long* bigFreqMinPtr = nullptr;
-static long* bigFreqMaxPtr = nullptr;
-static long* bigFreqRefPtr = nullptr;
-static float* depoCapMmPtr = nullptr;  // ✅ YENİ: Dinamik depo çapı
-
 static const Sample* kayitPtr = nullptr;
 static uint16_t kayitOrnekSayisi = 0;
+
+// ═══════════════════════════════════════════════════════════════
+// PUNTA MODU
+// ═══════════════════════════════════════════════════════════════
+static bool puntaModu = false;
+static uint16_t puntaSayaci = 0;
+static unsigned long puntaBaslangic = 0;
 
 // ═══════════════════════════════════════════════════════════════
 // ENCODER SETUP
@@ -41,22 +44,22 @@ void oynatmaEncoderSetup(StepMotorEncoder* bigEncoder, StepMotorEncoder* zEncode
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PARAMETRE SETUP
+// PUNTA MODU FONKSİYONLARI
 // ═══════════════════════════════════════════════════════════════
-void oynatmaParametreSetup(long* bigFreqMin, long* bigFreqMax, 
-                           long* zEncMin, long* zEncMax) {
-  bigFreqMinPtr = bigFreqMin;
-  bigFreqMaxPtr = bigFreqMax;
-  (void)zEncMin;
-  (void)zEncMax;
+void oynatmaPuntaModuAyarla(bool aktif) {
+  puntaModu = aktif;
+  puntaSayaci = 0;
+  
+  Serial.print(F("\n[OYNATMA] Punta modu: "));
+  Serial.println(aktif ? F("AÇIK ✓") : F("KAPALI"));
+  
+  if (aktif) {
+    Serial.println(F("  → 5 segment → 2sn kaynak → dur"));
+  }
 }
 
-void oynatmaRefHizSetup(long* bigFreqRefPtrArg) {
-  bigFreqRefPtr = bigFreqRefPtrArg;
-}
-
-void oynatmaDepoCapSetup(float* depoCapMm) {
-  depoCapMmPtr = depoCapMm;
+bool oynatmaPuntaModuAktifMi() {
+  return puntaModu;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -64,9 +67,12 @@ void oynatmaDepoCapSetup(float* depoCapMm) {
 // ═══════════════════════════════════════════════════════════════
 
 long oynatmaHesaplaZMaxOffset() {
-  if (globalA0Max <= globalA0Min) return Z_ENCODER_MAX;
+  uint16_t a0Min, a0Max;
+  ckHesaplaGlobalA0MinMax(&a0Min, &a0Max);
   
-  uint16_t a0Aralik = globalA0Max - globalA0Min;
+  if (a0Max <= a0Min) return Z_ENCODER_MAX;
+  
+  uint16_t a0Aralik = a0Max - a0Min;
   float oran = (float)a0Aralik / 1023.0;
   long zMaxOffset = (long)(oran * Z_ENCODER_MAX);
   
@@ -77,13 +83,16 @@ long oynatmaHesaplaZMaxOffset() {
 }
 
 long oynatmaMapA0ToZOffset(uint16_t a0) {
-  if (a0 <= globalA0Min) return 0;
+  uint16_t a0Min, a0Max;
+  ckHesaplaGlobalA0MinMax(&a0Min, &a0Max);
+  
+  if (a0 <= a0Min) return 0;
   
   long zMaxOffset = oynatmaHesaplaZMaxOffset();
   
-  if (a0 >= globalA0Max) return zMaxOffset;
+  if (a0 >= a0Max) return zMaxOffset;
   
-  return map(a0, globalA0Min, globalA0Max, 0, zMaxOffset);
+  return map(a0, a0Min, a0Max, 0, zMaxOffset);
 }
 
 long oynatmaMapA0ToZEnc(uint16_t a0) {
@@ -92,16 +101,15 @@ long oynatmaMapA0ToZEnc(uint16_t a0) {
 }
 
 unsigned int oynatmaMapA0ToBigFreq(uint16_t a0) {
-  if (bigFreqMinPtr == nullptr || bigFreqMaxPtr == nullptr) return 100;
-  if (bigFreqRefPtr == nullptr) return 100;
-  if (depoCapMmPtr == nullptr) return 100;
+  uint16_t a0Min, a0Max;
+  ckHesaplaGlobalA0MinMax(&a0Min, &a0Max);
   
   float mmPerA0 = A0_FIZIKSEL_ARALIK_MM / 1023.0;
-  float yaricapRef = (*depoCapMmPtr) / 2.0;  // ✅ Dinamik depo çapı kullan
-  float deltaYaricapMM = (a0 - globalA0Min) * mmPerA0;
+  float yaricapRef = ckMeta.depoCapMm / 2.0;
+  float deltaYaricapMM = (a0 - a0Min) * mmPerA0;
   float yaricapMM = yaricapRef + deltaYaricapMM;
   
-  float sabitCarpim = yaricapRef * (*bigFreqRefPtr);
+  float sabitCarpim = yaricapRef * ckMeta.bigFreqRef;
   float freq = sabitCarpim / yaricapMM;
   
   if (freq < 10) freq = 10;
@@ -130,29 +138,29 @@ void oynatmaBaslatKayit(const Sample* kayit, uint16_t ornekSayisi) {
     return;
   }
   
-  if (bigFreqMinPtr == nullptr || bigFreqMaxPtr == nullptr) {
-    Serial.println(F("✗ Parametre hatası!"));
-    return;
-  }
-  
   kayitPtr = kayit;
   kayitOrnekSayisi = ornekSayisi;
   
-  Serial.print(F("  Global A0 Min: ")); Serial.println(globalA0Min);
-  Serial.print(F("  Global A0 Max: ")); Serial.println(globalA0Max);
-  Serial.print(F("  A0 Aralığı: ")); Serial.println(globalA0Max - globalA0Min);
+  uint16_t a0Min, a0Max;
+  ckHesaplaGlobalA0MinMax(&a0Min, &a0Max);
+  
+  Serial.print(F("  Global A0 Min: ")); Serial.println(a0Min);
+  Serial.print(F("  Global A0 Max: ")); Serial.println(a0Max);
+  Serial.print(F("  A0 Aralığı: ")); Serial.println(a0Max - a0Min);
   Serial.print(F("  Z Referans: ")); Serial.println(ckMeta.zRefPos);
   Serial.print(F("  Hesaplanan Z Max Offset: ")); Serial.println(oynatmaHesaplaZMaxOffset());
-  
-  if (depoCapMmPtr != nullptr) {
-    Serial.print(F("  Depo Çapı: ")); Serial.print(*depoCapMmPtr); Serial.println(F(" mm"));
-  }
-  
+  Serial.print(F("  Depo Çapı: ")); Serial.print(ckMeta.depoCapMm); Serial.println(F(" mm"));
+  Serial.print(F("  BIG Freq Ref: ")); Serial.print(ckMeta.bigFreqRef); Serial.println(F(" Hz"));
   Serial.print(F("  Örnek sayısı: ")); Serial.println(ornekSayisi);
   
+  if (puntaModu) {
+    Serial.println(F("  Punta modu AÇIK (5 seg → 2sn kaynak)"));
+  }
+  
   idx = 0;
+  puntaSayaci = 0;
   durum = OY_SEGMENT_OYNAT;
-  digitalWrite(KAYNAK_ROLE_PIN, LOW);
+  digitalWrite(KAYNAK_ROLE_PIN, puntaModu ? HIGH : LOW);
   
   Serial.println(F("[OYNATMA] Segment oynatma başladı!"));
 }
@@ -220,6 +228,28 @@ void oynatmaRun() {
         }
         
         idx++;
+        
+        // PUNTA MODU KONTROLÜ
+        if (puntaModu) {
+          puntaSayaci++;
+          
+          if (puntaSayaci >= 5) {
+            puntaSayaci = 0;
+            
+            Serial.println(F("\n[PUNTA] Duruyor, kaynak açılıyor..."));
+            
+            // Motorları durdur
+            pulseAtDurdur(MOTOR_B);
+            pulseAtDurdur(MOTOR_Z);
+            
+            // Kaynağı aç
+            digitalWrite(KAYNAK_ROLE_PIN, LOW);
+            puntaBaslangic = millis();
+            
+            durum = OY_PUNTA_KAYNAK;
+            return;
+          }
+        }
       }
       
       if (pulseAtAktifMi(MOTOR_B)) {
@@ -234,6 +264,21 @@ void oynatmaRun() {
     }
     break;
     
+    case OY_PUNTA_KAYNAK:
+    {
+      // 2 saniye bekle
+      if (millis() - puntaBaslangic >= 2000) {
+        Serial.println(F("[PUNTA] Kaynak kapatıldı, devam ediliyor...\n"));
+        
+        // Kaynağı kapat
+        digitalWrite(KAYNAK_ROLE_PIN, HIGH);
+        delay(2000);
+        // Devam et
+        durum = OY_SEGMENT_OYNAT;
+      }
+    }
+    break;
+    
     default:
       break;
   }
@@ -244,7 +289,7 @@ void oynatmaRun() {
 // ═══════════════════════════════════════════════════════════════
 
 void oynatmaDuraklat() {
-  if (durum != OY_SEGMENT_OYNAT) {
+  if (durum != OY_SEGMENT_OYNAT && durum != OY_PUNTA_KAYNAK) {
     Serial.println(F("✗ Oynatma aktif değil!"));
     return;
   }
@@ -266,7 +311,10 @@ void oynatmaDevamEt() {
   }
   
   durum = OY_SEGMENT_OYNAT;
-  digitalWrite(KAYNAK_ROLE_PIN, LOW);
+  
+  if (!puntaModu) {
+    digitalWrite(KAYNAK_ROLE_PIN, LOW);
+  }
   
   Serial.println(F("▶ Oynatma devam ediyor!"));
   Serial.print(F("  Segment: ")); Serial.println(idx);
@@ -301,4 +349,5 @@ void oynatmaDurdur() {
   
   durum = OY_KAPALI;
   kayitPtr = nullptr;
+  puntaSayaci = 0;
 }
