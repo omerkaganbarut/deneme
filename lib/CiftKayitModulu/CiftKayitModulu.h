@@ -34,50 +34,14 @@ void ckRun();
 bool ckAktifMi();
 bool ckTamamlandiMi();
 void ckDurdur();
-
-// ═══════════════════════════════════════════════════════════════
-// DATA EXCHANGE FONKSİYONLARI
-// ═══════════════════════════════════════════════════════════════
-void ckExport1();  // W1 formatında Kayıt1'i export et
-void ckExport2();  // W2 formatında Kayıt2'yi export et
 void ckExport3();  // W3 formatında Meta data'yı export et
-
-bool ckImport1(String veriStr);  // W1 formatında Kayıt1'i import et
-bool ckImport2(String veriStr);  // W2 formatında Kayıt2'yi import et
 bool ckImport3(String veriStr);  // W3 formatında Meta data'yı import et
-
 void ckTemizle1();
 void ckTemizle2();
 void ckHepsiniTemizle();
-// CiftKayitModulu.h - STREAM FONKSİYONLARI EKLENDI
-// ... mevcut kodlar aynı kalacak ...
-
-// ═══════════════════════════════════════════════════════════════
-// STREAM IMPORT/EXPORT FONKSİYONLARI
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * @brief Kayıt1'i stream modunda import et
- * Format: WS1 → sonra veri akışı başlar
- * Örnek: 0,512 100,523 200,534 ... END
- */
 bool ckImportStream1();
-
-/**
- * @brief Kayıt2'yi stream modunda import et
- * Format: WS2 → sonra veri akışı başlar
- */
 bool ckImportStream2();
-
-/**
- * @brief Kayıt1'i stream modunda export et
- * 10 örnek sonra nokta koyar, devam eder
- */
 void ckExportStream1();
-
-/**
- * @brief Kayıt2'yi stream modunda export et
- */
 void ckExportStream2();
 
 // Global A0 aralığı (backward compatibility için)

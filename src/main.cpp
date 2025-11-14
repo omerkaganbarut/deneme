@@ -279,19 +279,13 @@ void handleCommand(const char* cmd) {
   // [E] ENCODER/EXPORT KOMUTLARI
   // ─────────────────────────────────────────────────────────────
   else if (cmd[0] == 'E' || cmd[0] == 'e') {
-    // ✅ STREAM EXPORT KOMUTLARI (ÖNCELİK!)
-    if (cmd[1] == 'S' && cmd[2] == '1') {
+    
+    // ESKİ EXPORT KOMUTLARI
+    if (cmd[1] == '1') {
       ckExportStream1();
     }
-    else if (cmd[1] == 'S' && cmd[2] == '2') {
-      ckExportStream2();
-    }
-    // ESKİ EXPORT KOMUTLARI
-    else if (cmd[1] == '1') {
-      ckExport1();
-    }
     else if (cmd[1] == '2') {
-      ckExport2();
+      ckExportStream2();
     }
     else if (cmd[1] == '3') {
       ckExport3();
@@ -347,49 +341,18 @@ void handleCommand(const char* cmd) {
   // ─────────────────────────────────────────────────────────────
   // [WS1] KAYIT1 STREAM IMPORT
   // ─────────────────────────────────────────────────────────────
-  else if (cmd[0] == 'W' && cmd[1] == 'S' && cmd[2] == '1') {
+  else if (cmd[0] == 'W' && cmd[1] == '1' ) {
     ckImportStream1();
   }
   
   // ─────────────────────────────────────────────────────────────
   // [WS2] KAYIT2 STREAM IMPORT
   // ─────────────────────────────────────────────────────────────
-  else if (cmd[0] == 'W' && cmd[1] == 'S' && cmd[2] == '2') {
+  else if (cmd[0] == 'W' && cmd[1] == '2' ) {
     ckImportStream2();
   }
   
-  // ═════════════════════════════════════════════════════════════
-  // ESKİ DATA EXCHANGE KOMUTLARI (AYNI KALDI)
-  // ═════════════════════════════════════════════════════════════
   
-  // ─────────────────────────────────────────────────────────────
-  // [W1] KAYIT1 IMPORT (ESKİ)
-  // ─────────────────────────────────────────────────────────────
-  else if (cmd[0] == 'W' && cmd[1] == '1') {
-    String veri = String(cmd).substring(2);
-    veri.trim();
-    
-    if (veri.length() > 0) {
-      ckImport1(veri);
-    } else {
-      Serial.println(F("✗ HATA: W1 komutundan sonra veri yok!"));
-      Serial.println(F("  Kullanım: W1 <enc0> <a0_0> <enc1> <a0_1> ..."));
-    }
-  }
-  
-  // ─────────────────────────────────────────────────────────────
-  // [W2] KAYIT2 IMPORT (ESKİ)
-  // ─────────────────────────────────────────────────────────────
-  else if (cmd[0] == 'W' && cmd[1] == '2') {
-    String veri = String(cmd).substring(2);
-    veri.trim();
-    
-    if (veri.length() > 0) {
-      ckImport2(veri);
-    } else {
-      Serial.println(F("✗ HATA: W2 komutundan sonra veri yok!"));
-    }
-  }
   
   // ─────────────────────────────────────────────────────────────
   // [W3] META DATA IMPORT
@@ -772,15 +735,11 @@ void yazdirMenu() {
   Serial.println(F("  MZ/MX/MB <hedef> <hz> → Motor hareket"));
   Serial.println(F("  ─────────────────────────────────────────────"));
   Serial.println(F("  📊 KAYIT YÖNETİMİ:"));
-  Serial.println(F("  WS1                   → Kayıt1 stream import ⭐"));
-  Serial.println(F("  WS2                   → Kayıt2 stream import ⭐"));
-  Serial.println(F("  W1 <data>             → Kayıt1 import (eski)"));
-  Serial.println(F("  W2 <data>             → Kayıt2 import (eski)"));
+  Serial.println(F("  W1                   → Kayıt1 stream import ⭐"));
+  Serial.println(F("  W2                   → Kayıt2 stream import ⭐"));
   Serial.println(F("  W3 <meta>             → Meta data import"));
-  Serial.println(F("  ES1                   → Kayıt1 stream export ⭐"));
-  Serial.println(F("  ES2                   → Kayıt2 stream export ⭐"));
-  Serial.println(F("  E1                    → Kayıt1 export (eski)"));
-  Serial.println(F("  E2                    → Kayıt2 export (eski)"));
+  Serial.println(F("  E1                   → Kayıt1 stream export ⭐"));
+  Serial.println(F("  E2                   → Kayıt2 stream export ⭐"));
   Serial.println(F("  E3                    → Meta data export"));
   Serial.println(F("  C1                    → Kayıt1 temizle"));
   Serial.println(F("  C2                    → Kayıt2 temizle"));
@@ -791,8 +750,8 @@ void yazdirMenu() {
   Serial.println(F("  OR                    → Oynatma devam et"));
   Serial.println(F("  ─────────────────────────────────────────────"));
   Serial.println(F("  ⚙️ AYARLAR:"));
-  Serial.println(F("  BR <değer> / BR       → Big referans hız"));
-  Serial.println(F("  DC <değer> / DC       → Depo çapı (mm)"));
+  Serial.println(F("  BR <değer> / BR       → Big referans hız =ç/hz=520/30oranı onerilir."));
+  Serial.println(F("  DC <değer> / DC       → Depo çapı kısa kenar (mm)"));
   Serial.println(F("  X1 SET / X1 <değer>   → X1 pozisyon"));
   Serial.println(F("  X2 SET / X2 <değer>   → X2 pozisyon"));
   Serial.println(F("  X                     → X pozisyonlarını göster"));
